@@ -17,3 +17,9 @@
 - Log injection risk: `err.message` is user-controlled and embedded in a manually-built JSON string via `JSON.stringify` — use a structured logger that serialises fields independently to prevent log-line forgery in aggregators.
 - `err.stack` is never logged in the unhandled error path — makes production debugging harder; consider logging the stack trace server-side (never to the client) when available.
 - Test app in `middleware.test.ts` duplicates production middleware wiring instead of importing the real app — creates a false sense of coverage; consider refactoring to import the real `app` instance once the app bootstrap is stable.
+
+## Deferred from: code review of 1-4-authentication-login-session-management (2026-05-28)
+
+- Argon2 params not encoded in hash format (`src/lib/crypto.ts`) — If ARGON2_PARAMS change, existing hashes silently fail verification. Consider encoding params (t, m, p) in the stored hash string.
+- refreshSession TTL not wired to settings (`src/middleware/auth.ts`) — Middleware has no DB access; Story 1.5 will need to thread TTL through or restructure middleware to accept a DB reference.
+- SQL migration split on `;` is fragile (`tests/setup.ts`) — Bare semicolon split will break on any future migration with a semicolon inside a string literal.

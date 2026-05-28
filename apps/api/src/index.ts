@@ -1,10 +1,11 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { errorHandler } from "./middleware/error-handler";
+import { authRouter } from "./routes/auth";
 import { healthRouter } from "./routes/health";
 import { errorResponseSchema } from "./schemas/common.schema";
 
-const app = new OpenAPIHono<{ Bindings: Env }>({
+const app = new OpenAPIHono<{ Bindings: Env; Variables: { userId: string } }>({
   defaultHook: (result, c) => {
     if (!result.success) {
       const parsed = errorResponseSchema.safeParse({
@@ -39,5 +40,6 @@ app.notFound((c) =>
   ),
 );
 app.route("/", healthRouter);
+app.route("/", authRouter);
 
 export default app;

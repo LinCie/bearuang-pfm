@@ -1,22 +1,24 @@
 import { env } from "cloudflare:test";
-import { readFileSync } from "fs";
-import { resolve } from "path";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "../src/db/schema/index";
+import migrationSql from "../src/db/migrations/0000_fast_johnny_storm.sql?raw";
 import { userFactory } from "./fixtures/factories";
 
 /** Returns the shared Cloudflare test environment. */
 export const getTestEnv = (): typeof env => env;
 
+const isD1Database = (value: unknown): value is D1Database =>
+  !!value && typeof value === "object" && "prepare" in value && typeof value.prepare === "function";
+
 /**
  * Applies all committed migrations to the given D1 binding.
  * Safe to call multiple times — "table already exists" errors are ignored.
  */
-export const applyMigrations = async (db: D1Database) => {
-  const migrationSql: string = readFileSync(
-    resolve(__dirname, "../src/db/migrations/0000_fast_johnny_storm.sql"),
-    "utf-8",
-  );
+export const applyMigrations = async (db: unknown) => {
+  if (!isD1Database(db)) {
+    throw new Error("Invalid D1 database binding");
+  }
+
   const rawStatements: string[] = migrationSql
     .replaceAll("--> statement-breakpoint", "")
     .split(";");
