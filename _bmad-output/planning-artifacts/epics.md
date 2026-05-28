@@ -127,8 +127,8 @@ NFR-OPS-04: D1 point-in-time recovery available via Cloudflare dashboard
 
 ### Additional Requirements
 
-- Starter template: Architecture specifies `bun create hono bearuang -- --template cloudflare-workers` as the project initialization command (impacts Epic 1 Story 1)
-- Post-scaffold dependencies (installed via bun): drizzle-orm, @hono/zod-openapi, zod, @noble/hashes, aws4fetch (core); drizzle-kit, @cloudflare/vitest-pool-workers, @cloudflare/workers-types, vitest, typescript, wrangler (dev)
+- Starter template: Architecture specifies the project lives at `apps/api/` within the monorepo (Hono on Cloudflare Workers, already scaffolded)
+- Post-scaffold dependencies (installed via bun in apps/api/): drizzle-orm, @hono/zod-openapi, zod, @noble/hashes, aws4fetch (core); drizzle-kit, @cloudflare/vitest-pool-workers, @cloudflare/workers-types, vitest, typescript, wrangler (dev)
 - wrangler.toml must configure D1, R2, KV bindings and Cron Trigger for weekly backup
 - Drizzle ORM for all database access — no raw SQL
 - Amount storage as TEXT (string decimal) — never floating-point
@@ -270,9 +270,9 @@ So that I can immediately start building features without infrastructure setup b
 
 **Acceptance Criteria:**
 
-**Given** a fresh project directory
-**When** the scaffold is initialized via `bun create hono bearuang -- --template cloudflare-workers`
-**Then** the project builds and runs with `wrangler dev`
+**Given** the existing project at `apps/api/` in the monorepo
+**When** the scaffold is configured with all required dependencies and tooling
+**Then** the project builds and runs with `wrangler dev` (from `apps/api/`)
 **And** all core dependencies are installed via bun (drizzle-orm, @hono/zod-openapi, zod, @noble/hashes, aws4fetch)
 **And** all dev dependencies are installed via bun (drizzle-kit, @cloudflare/vitest-pool-workers, @cloudflare/workers-types, vitest, typescript, wrangler)
 **And** wrangler.toml configures D1 binding (DB), R2 binding (RECEIPTS), KV binding (SESSIONS), and Cron Trigger (`0 3 * * 0`)
@@ -280,7 +280,7 @@ So that I can immediately start building features without infrastructure setup b
 **And** tsconfig.json has strict mode enabled with no `any` in domain logic
 **And** vitest.config.ts is configured with `@cloudflare/vitest-pool-workers`
 **And** drizzle.config.ts points to the D1 database
-**And** the project directory structure exists: src/routes/, src/services/, src/middleware/, src/db/schema/, src/lib/, src/schemas/, src/types/
+**And** the project directory structure exists: src/routes/, src/services/, src/middleware/, src/db/schema/, src/lib/, src/schemas/, src/types/ (all under `apps/api/`)
 **And** a test helper module exists at tests/setup.ts with seed utilities and a factory pattern
 **And** `.env.example` documents required secrets (INITIAL_PASSWORD)
 **And** `.gitignore` excludes .wrangler/, .dev.vars, node_modules/
@@ -295,7 +295,7 @@ So that all subsequent epics can follow the same pattern for schema changes.
 
 **Acceptance Criteria:**
 
-**Given** the project scaffold from Story 1.1
+**Given** the project scaffold from Story 1.1 (at `apps/api/`)
 **When** the Drizzle schema is defined for `users` table
 **Then** the `users` table has columns: id (TEXT UUID PK), display_name (TEXT), password_hash (TEXT), role (TEXT: 'primary' | 'partner'), is_active (INTEGER 1/0 default 1), created_at (TEXT ISO 8601)
 **And** the `settings` table has columns: key (TEXT PK), value (TEXT), updated_at (TEXT ISO 8601)

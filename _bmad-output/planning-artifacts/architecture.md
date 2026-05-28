@@ -109,27 +109,31 @@ Backend REST API on Cloudflare Workers — TypeScript, Hono framework, serverles
 | `alwalxed/hono-openapi-template` | Community | Pre-wired Hono + Drizzle + D1 + OpenAPI | May include incompatible patterns, maintenance uncertain |
 | Manual scaffold from official base | Hybrid | Full control, matches bearuang's specific needs exactly | Slightly more initial setup work |
 
-### Selected Approach: Manual Scaffold from Official Starter
+### Selected Approach: Monorepo Workspace at `apps/api/`
 
 **Rationale:**
+- bearuang is structured as a Turborepo monorepo with `apps/*` and `packages/*` workspaces
+- The API project already exists at `apps/api/` with Hono installed
 - bearuang has specific architectural needs (custom session auth, R2 presigned URLs, offline sync patterns) that no community template addresses
-- The official `create-hono` template provides a guaranteed-working Cloudflare Workers base
 - Adding Drizzle, Vitest pool-workers, and Zod is well-documented and straightforward
 - Full control over project structure from day one — no inherited opinions to fight
 
 **Initialization Command:**
 
 ```bash
-bun create hono bearuang -- --template cloudflare-workers
+# Project lives inside the monorepo at apps/api/
+# From workspace root:
+cd apps/api
+# Dependencies are installed via bun workspace (bun install at root)
 ```
 
 **Post-scaffold additions (first implementation story):**
 
 ```bash
-# Core dependencies
+# Core dependencies (run from apps/api/)
 bun add drizzle-orm @hono/zod-openapi zod @noble/hashes aws4fetch
 
-# Dev dependencies
+# Dev dependencies (run from apps/api/)
 bun add -D drizzle-kit @cloudflare/vitest-pool-workers @cloudflare/workers-types vitest typescript wrangler
 ```
 
@@ -463,8 +467,10 @@ import type { Env } from '../types'
 
 ### Complete Project Directory Structure
 
+The bearuang API project lives inside the monorepo at `apps/api/`. All paths below are relative to `apps/api/`.
+
 ```
-bearuang/
+apps/api/
 ├── README.md
 ├── package.json
 ├── tsconfig.json
@@ -554,6 +560,16 @@ bearuang/
 │       ├── collaboration.test.ts   # Invite + accept + revoke
 │       └── export.test.ts          # JSON + CSV export
 └── .wrangler/                      # Local dev state (gitignored)
+```
+
+**Monorepo Context:**
+```
+bearuang/                            # Workspace root
+├── package.json                     # Workspace config (workspaces: ["apps/*", "packages/*"])
+├── turbo.json                       # Turborepo pipeline config
+├── apps/
+│   └── api/                         # ← This project (all structure above)
+└── packages/                        # Shared packages (if needed in future)
 ```
 
 ### Architectural Boundaries
@@ -666,10 +682,11 @@ Client Request
 ### Development Workflow Integration
 
 **Local Development:**
-- `wrangler dev` starts local server with Miniflare emulation
+- `wrangler dev` starts local server with Miniflare emulation (run from `apps/api/`)
 - D1 state persists in `.wrangler/state/v3/d1/` (gitignored)
 - Secrets in `.dev.vars` (gitignored), template in `.env.example`
 - `wrangler types` regenerates `src/types/env.ts` after binding changes
+- Turborepo scripts at root (`bun run dev`) can invoke the api dev script
 
 **Build Process:**
 - No separate build step — Wrangler bundles TypeScript directly via esbuild
@@ -678,6 +695,7 @@ Client Request
 
 **Deployment:**
 ```bash
+# Run from apps/api/
 wrangler d1 migrations apply DB --remote   # Apply pending migrations
 wrangler deploy                             # Deploy Worker
 ```
@@ -849,7 +867,4 @@ Project structure directly supports all patterns — routes/services/schemas sep
 - String decimals everywhere — never use floating-point for amounts
 
 **First Implementation Priority:**
-```bash
-bun create hono bearuang -- --template cloudflare-workers
-```
-Then add dependencies, configure wrangler.toml bindings, set up Drizzle schema, and implement auth middleware.
+The project already exists at `apps/api/` within the monorepo. First story configures wrangler.toml bindings, installs dependencies, sets up the directory structure, and implements auth middleware.
