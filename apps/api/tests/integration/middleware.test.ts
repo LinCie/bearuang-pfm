@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { env } from "cloudflare:test";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
 import { errorHandler } from "../../src/middleware/error-handler";
@@ -104,11 +105,18 @@ describe("global middleware", () => {
   });
 
   it("returns 200 for health route", async () => {
-    const res = await testApp.request("/api/v1/health");
+    const res = await testApp.request("/api/v1/health", {}, env);
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body).toEqual({ status: "ok" });
+    expect(body).toMatchObject({
+      status: "healthy",
+      services: {
+        d1: { status: "ok" },
+        kv: { status: "ok" },
+        r2: { status: "ok" },
+      },
+    });
   });
 
   it("returns 404 for unknown routes", async () => {

@@ -230,7 +230,14 @@ describe("auth routes", () => {
     const res = await app.request("/api/v1/health", {}, env);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: "ok" });
+    expect(await res.json()).toMatchObject({
+      status: "healthy",
+      services: {
+        d1: { status: "ok" },
+        kv: { status: "ok" },
+        r2: { status: "ok" },
+      },
+    });
   });
 
   it("uses display_name setting when provisioning first user", async () => {

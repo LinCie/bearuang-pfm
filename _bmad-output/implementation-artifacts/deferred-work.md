@@ -28,3 +28,9 @@
 
 - No rate limit on change-password endpoint — An attacker with a valid session token could brute-force the current password without restriction. Deferred: single-user app behind auth, minimal threat model; revisit in a future hardening pass.
 - No integration tests for settings endpoints — `GET /api/v1/settings` and `PUT /api/v1/settings` have zero integration test coverage. The session_timeout → login TTL flow is also untested. Deferred: settings tests to be added in Story 1.6 which also uses settings.
+
+## Deferred from: code review of 1-6-setup-wizard-health-check (2026-05-29)
+
+- TOCTOU race condition on `POST /api/v1/setup/initialize` — two concurrent requests can both pass the `setup_complete` guard before either writes it; D1 has no transaction support for Drizzle query builders and the app is single-owner, so risk is acceptable at this scale.
+- `POST /api/v1/setup/initialize` is unauthenticated and can be hijacked before the owner completes setup — protecting it requires a pre-shared secret or one-time token; out of scope for this story, revisit if multi-deployment or public-facing scenarios arise.
+- No timeout on D1/KV/R2 health-check probes — a hanging service call can block the health endpoint for the Workers wall-clock limit; no `Promise.race` or `AbortSignal` bounds the probe duration; revisit when health endpoint SLA requirements are defined.
