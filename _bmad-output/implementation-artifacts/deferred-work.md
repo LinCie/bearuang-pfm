@@ -23,3 +23,8 @@
 - Argon2 params not encoded in hash format (`src/lib/crypto.ts`) — If ARGON2_PARAMS change, existing hashes silently fail verification. Consider encoding params (t, m, p) in the stored hash string.
 - refreshSession TTL not wired to settings (`src/middleware/auth.ts`) — Middleware has no DB access; Story 1.5 will need to thread TTL through or restructure middleware to accept a DB reference.
 - SQL migration split on `;` is fragile (`tests/setup.ts`) — Bare semicolon split will break on any future migration with a semicolon inside a string literal.
+
+## Deferred from: code review of 1-5-authentication-password-change-rate-limiting (2026-05-28)
+
+- No rate limit on change-password endpoint — An attacker with a valid session token could brute-force the current password without restriction. Deferred: single-user app behind auth, minimal threat model; revisit in a future hardening pass.
+- No integration tests for settings endpoints — `GET /api/v1/settings` and `PUT /api/v1/settings` have zero integration test coverage. The session_timeout → login TTL flow is also untested. Deferred: settings tests to be added in Story 1.6 which also uses settings.

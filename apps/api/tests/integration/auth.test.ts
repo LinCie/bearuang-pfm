@@ -23,6 +23,7 @@ describe("auth routes", () => {
     await env.DB.prepare("DELETE FROM settings").run();
     const kvList = await env.SESSIONS.list();
     await Promise.all(kvList.keys.map((k) => env.SESSIONS.delete(k.name) as Promise<void>));
+    await env.SESSIONS.delete("rate_limit:login:global");
   });
 
   it("auto-provisions first user and returns session token", async () => {
@@ -261,4 +262,243 @@ describe("auth routes", () => {
 
     expect(rows).toHaveLength(1);
   }, 30_000);
+
+  describe("change password", () => {
+    it("changes password and allows login with the new password", async () => {
+      const firstLoginRes = await app.request(
+        "/api/v1/auth/login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: env.INITIAL_PASSWORD }),
+        },
+        env,
+      );
+      const firstLoginBody = loginResponseSchema.parse(await firstLoginRes.json());
+
+      const changeRes = await app.request(
+        "/api/v1/auth/change-password",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${firstLoginBody.token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            current_password: env.INITIAL_PASSWORD,
+            new_password: "new-password",
+          }),
+        },
+        env,
+      );
+
+      expect(changeRes.status).toBe(200);
+      expect(await changeRes.json()).toEqual({ message: "Password changed successfully" });
+
+      const secondLoginRes = await app.request(
+        "/api/v1/auth/login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: "new-password" }),
+        },
+        env,
+      );
+
+      expect(secondLoginRes.status).toBe(200);
+      const secondLoginBody = loginResponseSchema.parse(await secondLoginRes.json());
+      expect(secondLoginBody.token).toMatch(/^[a-f0-9]{64}$/);
+    }, 90_000);
+
+    it("returns 401 when current password is incorrect", async () => {
+      const loginRes = await app.request(
+        "/api/v1/auth/login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: env.INITIAL_PASSWORD }),
+        },
+        env,
+      );
+      const { token } = loginResponseSchema.parse(await loginRes.json());
+
+      const changeRes = await app.request(
+        "/api/v1/auth/change-password",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            current_password: "wrong-current-password",
+            new_password: "new-password",
+          }),
+        },
+        env,
+      );
+
+      expect(changeRes.status).toBe(401);
+      const body = errorResponseSchema.parse(await changeRes.json());
+      expect(body).toEqual({
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Current password is incorrect",
+        },
+      });
+    }, 30_000);
+
+    it("returns 400 when new password is empty", async () => {
+      const loginRes = await app.request(
+        "/api/v1/auth/login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: env.INITIAL_PASSWORD }),
+        },
+        env,
+      );
+      const { token } = loginResponseSchema.parse(await loginRes.json());
+
+      const changeRes = await app.request(
+        "/api/v1/auth/change-password",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            current_password: env.INITIAL_PASSWORD,
+            new_password: "",
+          }),
+        },
+        env,
+      );
+
+      expect(changeRes.status).toBe(400);
+      const body = await changeRes.json();
+      expect(body).toHaveProperty("error");
+      expect(JSON.stringify(body)).toContain("new_password");
+    }, 30_000);
+
+    it("returns 401 when changing password without auth token", async () => {
+      const res = await app.request(
+        "/api/v1/auth/change-password",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            current_password: env.INITIAL_PASSWORD,
+            new_password: "new-password",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(401);
+      const body = errorResponseSchema.parse(await res.json());
+      expect(body).toEqual({
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Unauthorized",
+        },
+      });
+    });
+  });
+
+  describe("rate limiting", () => {
+    it("locks out on sixth failed attempt after five failures", async () => {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const failedRes = await app.request(
+          "/api/v1/auth/login",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: "wrong-password" }),
+          },
+          env,
+        );
+        expect(failedRes.status).toBe(401);
+      }
+
+      const lockedRes = await app.request(
+        "/api/v1/auth/login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: env.INITIAL_PASSWORD }),
+        },
+        env,
+      );
+
+      expect(lockedRes.status).toBe(429);
+      const body = errorResponseSchema.parse(await lockedRes.json());
+      expect(body).toEqual({
+        error: {
+          code: "RATE_LIMITED",
+          message: "Too many login attempts. Try again in 15 minutes.",
+        },
+      });
+    }, 30_000);
+
+    it("resets failed-login counter after a successful login", async () => {
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const failedRes = await app.request(
+          "/api/v1/auth/login",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: "wrong-password" }),
+          },
+          env,
+        );
+        expect(failedRes.status).toBe(401);
+      }
+
+      const successRes = await app.request(
+        "/api/v1/auth/login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: env.INITIAL_PASSWORD }),
+        },
+        env,
+      );
+      expect(successRes.status).toBe(200);
+
+      const failedAfterResetRes = await app.request(
+        "/api/v1/auth/login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: "wrong-password" }),
+        },
+        env,
+      );
+
+      expect(failedAfterResetRes.status).toBe(401);
+      const body = errorResponseSchema.parse(await failedAfterResetRes.json());
+      expect(body.error.code).toBe("UNAUTHORIZED");
+    }, 30_000);
+
+    it("allows login after lockout window expires", async () => {
+      await env.SESSIONS.put("rate_limit:login:global", "5", { expirationTtl: 60 });
+      await new Promise((resolve) => setTimeout(resolve, 61_000));
+
+      const res = await app.request(
+        "/api/v1/auth/login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: env.INITIAL_PASSWORD }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = loginResponseSchema.parse(await res.json());
+      expect(body.token).toMatch(/^[a-f0-9]{64}$/);
+    }, 90_000);
+  });
 });

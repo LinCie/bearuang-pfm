@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { errorHandler } from "./middleware/error-handler";
 import { authRouter } from "./routes/auth";
 import { healthRouter } from "./routes/health";
+import { settingsRouter } from "./routes/settings";
 import { errorResponseSchema } from "./schemas/common.schema";
 
 const app = new OpenAPIHono<{ Bindings: Env; Variables: { userId: string } }>({
@@ -41,5 +42,6 @@ app.notFound((c) =>
 );
 app.route("/", healthRouter);
 app.route("/", authRouter);
+app.route("/", settingsRouter);
 
 export default app;
