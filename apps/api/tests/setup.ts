@@ -6,22 +6,28 @@ import * as schema from "../src/db/schema/index";
 import { userFactory } from "./fixtures/factories";
 
 /** Returns the shared Cloudflare test environment. */
-export const getTestEnv = () => env;
+export const getTestEnv = (): typeof env => env;
 
 /**
  * Applies all committed migrations to the given D1 binding.
  * Safe to call multiple times — "table already exists" errors are ignored.
  */
 export const applyMigrations = async (db: D1Database) => {
-  const migrationSql = readFileSync(
+  const migrationSql: string = readFileSync(
     resolve(__dirname, "../src/db/migrations/0000_fast_johnny_storm.sql"),
     "utf-8",
   );
-  const statements = migrationSql
+  const rawStatements: string[] = migrationSql
     .replaceAll("--> statement-breakpoint", "")
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean);
+    .split(";");
+  const statements: string[] = [];
+
+  for (const rawStatement of rawStatements) {
+    const statement = rawStatement.trim();
+    if (statement.length > 0) {
+      statements.push(statement);
+    }
+  }
 
   for (const statement of statements) {
     try {

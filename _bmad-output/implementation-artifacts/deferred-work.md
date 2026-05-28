@@ -11,3 +11,9 @@
 - No DB-level constraints on `is_active` (any integer), `display_name` (empty string), `created_at`/`updated_at` (non-ISO strings) — pre-existing design decision; enforced at app layer via Zod in Story 1.4.
 - `settings` table has no `created_at` audit column — spec-level design choice; revisit if audit requirements change.
 - No CI enforcement of schema/migration drift — a `drizzle-kit check` step in CI would catch Drizzle schema vs committed SQL divergence; add when CI pipeline is established.
+
+## Deferred from: code review of 1-3-global-middleware-error-handling (2026-05-28)
+
+- Log injection risk: `err.message` is user-controlled and embedded in a manually-built JSON string via `JSON.stringify` — use a structured logger that serialises fields independently to prevent log-line forgery in aggregators.
+- `err.stack` is never logged in the unhandled error path — makes production debugging harder; consider logging the stack trace server-side (never to the client) when available.
+- Test app in `middleware.test.ts` duplicates production middleware wiring instead of importing the real app — creates a false sense of coverage; consider refactoring to import the real `app` instance once the app bootstrap is stable.

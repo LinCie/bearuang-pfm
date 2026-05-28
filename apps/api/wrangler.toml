@@ -20,6 +20,9 @@ bucket_name = "bearuang-receipts"
 binding = "SESSIONS"
 id = "<placeholder>"
 
+[vars]
+CORS_ORIGIN = ""
+
 [triggers]
 crons = ["0 3 * * 0"]
 
