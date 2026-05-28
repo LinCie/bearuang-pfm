@@ -1,9 +1,16 @@
 {
   "extends": "@repo/typescript-config/base.json",
   "compilerOptions": {
-    "strict": true,
-    "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx"
+    "types": [
+      "@cloudflare/workers-types",
+      "@cloudflare/vitest-pool-workers/types"
+    ]
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "tests",
+    "worker-configuration.d.ts",
+    "drizzle.config.ts",
+    "vitest.config.ts"
+  ]
 }

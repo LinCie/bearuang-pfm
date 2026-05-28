@@ -1,17 +1,33 @@
 {
   "name": "api",
+  "type": "module",
   "scripts": {
-    "dev": "bun run --hot src/index.ts",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
     "lint": "eslint .",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "cf:types": "wrangler types"
   },
   "dependencies": {
-    "hono": "^4.12.23"
+    "@hono/zod-openapi": "^1.4.0",
+    "@noble/hashes": "^2.2.0",
+    "aws4fetch": "^1.0.20",
+    "drizzle-orm": "^0.36.4",
+    "hono": "^4.12.23",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@cloudflare/vitest-pool-workers": "^0.16.10",
+    "@cloudflare/workers-types": "^4.20260528.1",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
-    "eslint": "^9.39.1"
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^9.39.1",
+    "vitest": "^4.1.7",
+    "wrangler": "^4.95.0"
   }
 }

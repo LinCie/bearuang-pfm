@@ -1,5 +1,5 @@
 # generated: 2026-05-28
-# last_updated: 2026-05-28
+# last_updated: 2026-05-28 (post-review)
 # project: bearuang
 # project_key: NOKEY
 # tracking_system: file-system
@@ -43,8 +43,8 @@ story_location: "{project-root}/_bmad-output/implementation-artifacts"
 
 development_status:
   # Epic 1: Project Foundation & Authentication
-  epic-1: backlog
-  1-1-project-scaffold-infrastructure-configuration: backlog
+  epic-1: in-progress
+  1-1-project-scaffold-infrastructure-configuration: done
   1-2-database-schema-migration-workflow: backlog
   1-3-global-middleware-error-handling: backlog
   1-4-authentication-login-session-management: backlog

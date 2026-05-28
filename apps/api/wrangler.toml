@@ -1,0 +1,28 @@
+name = "bearuang-api"
+main = "src/index.ts"
+compatibility_date = "2026-05-28"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bearuang"
+database_id = "<placeholder>"
+migrations_dir = "src/db/migrations"
+
+[[r2_buckets]]
+binding = "RECEIPTS"
+bucket_name = "bearuang-receipts"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "<placeholder>"
+
+[triggers]
+crons = ["0 3 * * 0"]
+
+# INITIAL_PASSWORD is a secret — do NOT declare it under [vars].
+# Set it locally via .dev.vars (gitignored) and in production via:
+#   bunx wrangler secret put INITIAL_PASSWORD
