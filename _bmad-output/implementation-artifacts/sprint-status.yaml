@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28
-last_updated: 2026-05-28
+last_updated: 2026-05-28 (story-1-2-done)
 project: bearuang
 project_key: NOKEY
 tracking_system: file-system
@@ -45,7 +45,7 @@ development_status:
   # Epic 1: Project Foundation & Authentication
   epic-1: in-progress
   1-1-project-scaffold-infrastructure-configuration: done
-  1-2-database-schema-migration-workflow: backlog
+  1-2-database-schema-migration-workflow: done
   1-3-global-middleware-error-handling: backlog
   1-4-authentication-login-session-management: backlog
   1-5-authentication-password-change-rate-limiting: backlog
