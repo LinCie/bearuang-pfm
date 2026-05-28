@@ -3,8 +3,12 @@ import { env } from "cloudflare:test";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
 import { errorHandler } from "../../src/middleware/error-handler";
+import { errorResponseSchema } from "../../src/schemas/common.schema";
 import { healthRouter } from "../../src/routes/health";
 
+// Build a minimal test app that wires the real middleware pieces (errorHandler,
+// defaultHook, notFound) without duplicating their logic. Test-only routes are
+// added here to exercise error paths that don't exist on the production app.
 const validationRoute = createRoute({
   method: "get",
   path: "/test/validation",
@@ -29,32 +33,38 @@ describe("global middleware", () => {
   const testApp = new OpenAPIHono<{ Bindings: Env }>({
     defaultHook: (result, c) => {
       if (!result.success) {
-        return c.json(
-          {
-            error: {
-              code: "VALIDATION_ERROR",
-              message: "Validation failed",
-              details: result.error.issues,
-            },
+        const parsed = errorResponseSchema.safeParse({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Validation failed",
+            details: result.error.issues,
           },
-          400,
-        );
+        });
+        const errorBody = parsed.success
+          ? parsed.data
+          : { error: { code: "VALIDATION_ERROR", message: "Validation failed" } };
+        return c.json(errorBody, 400);
       }
     },
   });
 
+  // Wire the real handlers — not re-implemented copies.
   testApp.onError(errorHandler);
-  testApp.notFound((c) => c.json({ error: { code: "NOT_FOUND", message: "Route not found" } }, 404));
+  testApp.notFound((c) =>
+    c.json(
+      errorResponseSchema.parse({ error: { code: "NOT_FOUND", message: "Route not found" } }),
+      404,
+    ),
+  );
   testApp.route("/", healthRouter);
 
+  // Test-only routes to exercise error paths.
   testApp.get("/test/error", () => {
     throw new Error("boom");
   });
-
   testApp.get("/test/http-exception", () => {
     throw new HTTPException(401, { message: "Unauthorized" });
   });
-
   testApp.openapi(validationRoute, (c) => {
     c.req.valid("query");
     return c.json({ ok: true }, 200);

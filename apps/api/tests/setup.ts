@@ -1,8 +1,11 @@
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
+import type { InferInsertModel } from "drizzle-orm";
 import * as schema from "../src/db/schema/index";
 import migrationSql from "../src/db/migrations/0000_fast_johnny_storm.sql?raw";
 import { userFactory } from "./fixtures/factories";
+
+type UserInsert = InferInsertModel<typeof schema.users>;
 
 /** Returns the shared Cloudflare test environment. */
 export const getTestEnv = (): typeof env => env;
@@ -19,17 +22,12 @@ export const applyMigrations = async (db: unknown) => {
     throw new Error("Invalid D1 database binding");
   }
 
-  const rawStatements: string[] = migrationSql
-    .replaceAll("--> statement-breakpoint", "")
-    .split(";");
-  const statements: string[] = [];
-
-  for (const rawStatement of rawStatements) {
-    const statement = rawStatement.trim();
-    if (statement.length > 0) {
-      statements.push(statement);
-    }
-  }
+  // Split on Drizzle's statement-breakpoint marker rather than bare `;`
+  // so that future migrations with semicolons inside string literals are safe.
+  const statements: string[] = migrationSql
+    .split("--> statement-breakpoint")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 
   for (const statement of statements) {
     try {
@@ -45,10 +43,13 @@ export const applyMigrations = async (db: unknown) => {
 
 /**
  * Seeds a user row into the database using the userFactory defaults.
- * Returns the inserted user object.
+ * Accepts optional field overrides. Returns the inserted user object.
  */
-export const seedUser = async (db: ReturnType<typeof drizzle>) => {
-  const user = userFactory();
+export const seedUser = async (
+  db: ReturnType<typeof drizzle>,
+  overrides?: Partial<UserInsert>,
+) => {
+  const user = userFactory(overrides);
   await db.insert(schema.users).values(user);
   return user;
 };

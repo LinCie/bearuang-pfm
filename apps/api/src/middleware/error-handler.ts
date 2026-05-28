@@ -46,13 +46,12 @@ export const errorHandler = (err: Error, c: Context): Response => {
 
   const message = err instanceof Error ? err.message : String(err);
 
-  console.error(
-    JSON.stringify({
-      level: "error",
-      action: "unhandled_error",
-      error: message,
-    }),
-  );
+  console.error({
+    level: "error",
+    action: "unhandled_error",
+    error: message,
+    stack: err.stack,
+  });
 
   const parsed = errorResponseSchema.safeParse({
     error: {
