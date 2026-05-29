@@ -41,8 +41,19 @@ export const updateAccountRequestSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
+export const accountWithBalanceSchema = accountSchema.extend({
+  current_balance: z.string(),
+});
+
+export const accountSummarySchema = z.object({
+  total_assets: z.string(),
+  total_liabilities: z.string(),
+  net_worth: z.string(),
+});
+
 export const accountListResponseSchema = z.object({
-  items: z.array(accountSchema),
+  items: z.array(accountWithBalanceSchema),
+  summary: accountSummarySchema,
 });
 
 export const accountIdParamsSchema = z.object({
@@ -51,3 +62,5 @@ export const accountIdParamsSchema = z.object({
 
 export type AccountType = z.infer<typeof accountTypeSchema>;
 export type Account = z.infer<typeof accountSchema>;
+export type AccountWithBalance = z.infer<typeof accountWithBalanceSchema>;
+export type AccountListResponse = z.infer<typeof accountListResponseSchema>;

@@ -1,5 +1,5 @@
 # generated: 2026-05-28
-# last_updated: 2026-05-29 (story-2.2-done)
+# last_updated: 2026-05-29 (story-2.3-done)
 # project: bearuang
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28
-last_updated: 2026-05-29 (story-2.2-done)
+last_updated: 2026-05-29 (story-2.3-done)
 project: bearuang
 project_key: NOKEY
 tracking_system: file-system
@@ -56,7 +56,7 @@ development_status:
   epic-2: in-progress
   2-1-category-crud-seed: done
   2-2-account-crud-balance-logic: done
-  2-3-string-decimal-math-library-account-balance-derivation: backlog
+  2-3-string-decimal-math-library-account-balance-derivation: done
   epic-2-retrospective: optional
 
   # Epic 3: Transactions & Soft-Delete

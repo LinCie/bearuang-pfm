@@ -1,10 +1,17 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { HTTPException } from "hono/http-exception";
 import { accounts } from "../db/schema";
-import type { Account, AccountType } from "../schemas/account.schema";
+import { add, subtract, sum } from "../lib/decimal";
+import type {
+  Account,
+  AccountListResponse,
+  AccountType,
+  AccountWithBalance,
+} from "../schemas/account.schema";
 
 const ASSET_TYPES = new Set<string>(["bank", "cash", "ewallet", "investment"]);
+const ZERO = "0";
 
 interface CreateAccountInput {
   name: string;
@@ -28,6 +35,23 @@ const toAccount = (row: typeof accounts.$inferSelect): Account => ({
 
 export const classifyAccountType = (type: string): "asset" | "liability" =>
   ASSET_TYPES.has(type) ? "asset" : "liability";
+
+// Forward-compatible seam for Epic 3. The `transactions` table does not exist
+// until Story 3.1, so every account currently has a zero delta.
+const getTransactionDeltas = async (
+  db: DrizzleD1Database,
+): Promise<Map<string, string>> => {
+  const tables = await db.all<{ name: string }>(
+    sql`SELECT name FROM sqlite_master WHERE type='table' AND name='transactions'`,
+  );
+
+  if (tables.length === 0) {
+    return new Map();
+  }
+
+  // Epic 3 (Story 3.1+) implements per-account transaction summation here.
+  return new Map();
+};
 
 export const createAccount = async (
   db: DrizzleD1Database,
@@ -62,14 +86,41 @@ export const createAccount = async (
 
 export const listAccounts = async (
   db: DrizzleD1Database,
-): Promise<{ items: Account[] }> => {
+): Promise<AccountListResponse> => {
   const rows = await db
     .select()
     .from(accounts)
     .where(eq(accounts.is_active, 1))
     .orderBy(asc(accounts.created_at), asc(accounts.name), asc(accounts.id));
 
-  return { items: rows.map(toAccount) };
+  const deltas = await getTransactionDeltas(db);
+  const items: AccountWithBalance[] = rows.map((row) => {
+    const account = toAccount(row);
+
+    return {
+      ...account,
+      current_balance: add(account.initial_balance, deltas.get(account.id) ?? ZERO),
+    };
+  });
+  const total_assets = sum(
+    items
+      .filter((item) => classifyAccountType(item.type) === "asset")
+      .map((item) => item.current_balance),
+  );
+  const total_liabilities = sum(
+    items
+      .filter((item) => classifyAccountType(item.type) === "liability")
+      .map((item) => item.current_balance),
+  );
+
+  return {
+    items,
+    summary: {
+      total_assets,
+      total_liabilities,
+      net_worth: subtract(total_assets, total_liabilities),
+    },
+  };
 };
 
 export const getAccount = async (db: DrizzleD1Database, id: string): Promise<Account> => {

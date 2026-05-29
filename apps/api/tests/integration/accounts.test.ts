@@ -215,12 +215,13 @@ describe("account routes", () => {
     expect(body.items.every((item) => item.is_active)).toBe(true);
   }, 30_000);
 
-  it("list omits current_balance and summary", async () => {
+  it("list includes current_balance and summary", async () => {
     const { token, userId } = await login();
 
     await db.insert(schema.accounts).values(
       accountFactory({
         name: "Main Account",
+        initial_balance: "1000.00",
         created_by: userId,
         updated_by: userId,
       }),
@@ -238,22 +239,167 @@ describe("account routes", () => {
 
     expect(res.status).toBe(200);
 
-    const rawBody = await res.json();
-
-    if (
-      !rawBody ||
-      typeof rawBody !== "object" ||
-      !("items" in rawBody) ||
-      !Array.isArray(rawBody.items)
-    ) {
-      throw new Error("Expected account list response");
-    }
-
-    expect(rawBody).not.toHaveProperty("summary");
-    expect(rawBody.items[0]).not.toHaveProperty("current_balance");
-
-    const body = accountListResponseSchema.parse(rawBody);
+    const body = accountListResponseSchema.parse(await res.json());
     expect(body.items).toHaveLength(1);
+    expect(body.items[0]?.current_balance).toBe("1000.00");
+    expect(body.summary).toEqual({
+      total_assets: "1000.00",
+      total_liabilities: "0",
+      net_worth: "1000.00",
+    });
+  }, 30_000);
+
+  it("summary computes net worth from assets and liabilities", async () => {
+    const { token, userId } = await login();
+
+    await db.insert(schema.accounts).values([
+      accountFactory({
+        name: "Checking",
+        type: "bank",
+        initial_balance: "5000000.00",
+        created_by: userId,
+        updated_by: userId,
+      }),
+      accountFactory({
+        name: "Cash",
+        type: "cash",
+        initial_balance: "1000.00",
+        created_by: userId,
+        updated_by: userId,
+      }),
+      accountFactory({
+        name: "Card",
+        type: "credit_card",
+        initial_balance: "2000000.00",
+        created_by: userId,
+        updated_by: userId,
+      }),
+    ]);
+
+    const res = await app.request(
+      "/api/v1/accounts",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+
+    const body = accountListResponseSchema.parse(await res.json());
+    expect(body.summary).toEqual({
+      total_assets: "5001000.00",
+      total_liabilities: "2000000.00",
+      net_worth: "3001000.00",
+    });
+  }, 30_000);
+
+  it("excludes soft-deleted accounts from listing and net worth", async () => {
+    const { token, userId } = await login();
+
+    const active = accountFactory({
+      name: "Active Savings",
+      type: "bank",
+      initial_balance: "100.00",
+      created_by: userId,
+      updated_by: userId,
+    });
+    const deleted = accountFactory({
+      name: "Deleted Savings",
+      type: "bank",
+      initial_balance: "999.99",
+      is_active: 0,
+      created_by: userId,
+      updated_by: userId,
+    });
+
+    await db.insert(schema.accounts).values([active, deleted]);
+
+    const res = await app.request(
+      "/api/v1/accounts",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+
+    const body = accountListResponseSchema.parse(await res.json());
+    expect(body.items.find((item) => item.id === deleted.id)).toBeUndefined();
+    expect(body.summary).toEqual({
+      total_assets: "100.00",
+      total_liabilities: "0",
+      net_worth: "100.00",
+    });
+  }, 30_000);
+
+  it('returns a zeroed summary when there are no accounts', async () => {
+    const { token } = await login();
+
+    const res = await app.request(
+      "/api/v1/accounts",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+
+    const body = accountListResponseSchema.parse(await res.json());
+    expect(body.items).toHaveLength(0);
+    expect(body.summary).toEqual({
+      total_assets: "0",
+      total_liabilities: "0",
+      net_worth: "0",
+    });
+  }, 30_000);
+
+  it("computes a negative net worth when liabilities exceed assets", async () => {
+    const { token, userId } = await login();
+
+    await db.insert(schema.accounts).values([
+      accountFactory({
+        name: "Cash",
+        type: "cash",
+        initial_balance: "500.00",
+        created_by: userId,
+        updated_by: userId,
+      }),
+      accountFactory({
+        name: "Mortgage",
+        type: "loan",
+        initial_balance: "2000.00",
+        created_by: userId,
+        updated_by: userId,
+      }),
+    ]);
+
+    const res = await app.request(
+      "/api/v1/accounts",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+
+    const body = accountListResponseSchema.parse(await res.json());
+    expect(body.summary).toEqual({
+      total_assets: "500.00",
+      total_liabilities: "2000.00",
+      net_worth: "-1500.00",
+    });
   }, 30_000);
 
   it("gets an account by id including soft-deleted", async () => {
