@@ -6,3 +6,4 @@
 export { users } from "./users";
 export { settings } from "./settings";
 export { categories } from "./categories";
+export { accounts } from "./accounts";

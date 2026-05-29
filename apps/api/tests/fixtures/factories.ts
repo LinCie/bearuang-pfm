@@ -4,6 +4,7 @@ import * as schema from "../../src/db/schema/index";
 type UserInsert = InferInsertModel<typeof schema.users>;
 type SettingsInsert = InferInsertModel<typeof schema.settings>;
 type CategoryInsert = InferInsertModel<typeof schema.categories>;
+type AccountInsert = InferInsertModel<typeof schema.accounts>;
 
 export const userFactory = (overrides?: Partial<UserInsert>): UserInsert => ({
   id: crypto.randomUUID(),
@@ -34,6 +35,26 @@ export const categoryFactory = (
     name: `Category ${crypto.randomUUID().slice(0, 8)}`,
     type: "expense",
     usage_count: 0,
+    created_by: "00000000-0000-0000-0000-000000000000",
+    updated_by: "00000000-0000-0000-0000-000000000000",
+    created_at: now,
+    updated_at: now,
+    ...overrides,
+  };
+};
+
+export const accountFactory = (
+  overrides?: Partial<AccountInsert>,
+): AccountInsert => {
+  const now = new Date().toISOString();
+
+  return {
+    id: crypto.randomUUID(),
+    name: `Account ${crypto.randomUUID().slice(0, 8)}`,
+    type: "bank",
+    currency: "IDR",
+    initial_balance: "0",
+    is_active: 1,
     created_by: "00000000-0000-0000-0000-000000000000",
     updated_by: "00000000-0000-0000-0000-000000000000",
     created_at: now,

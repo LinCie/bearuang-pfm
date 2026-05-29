@@ -29,3 +29,9 @@
 - `auth.test.ts` timeout bump 30s→60s — out of declared story scope; functional change to accommodate argon2 runtime in test environment.
 - `tests/import-meta.d.ts` undocumented file addition — necessary for `import.meta.glob` typing to pass `check-types`; not listed in story's "Files to Create" but required by the implementation approach.
 - `settingsRouter` missing `defaultHook` — `@hono/zod-openapi` child routers do NOT inherit the parent's `defaultHook`; `settingsRouter` has no validation-error hook, meaning invalid input to settings routes may not return the standard `VALIDATION_ERROR` envelope. Add a `defaultHook` to `settingsRouter` (and all future routers) in a future story.
+
+## Deferred from: code review of 2-2-account-crud-balance-logic (2026-05-29)
+
+- `initial_balance` has no max-length bound (`src/schemas/account.schema.ts`) — `name`/`currency` are bounded but the decimal string is not; an arbitrarily long numeric string is accepted and stored. AC-10's mandated schema omits a max; add a sane upper bound in a future hardening pass.
+- Additional edge-case test coverage for accounts (`tests/integration/accounts.test.ts`) — decimal-string rejections, name/currency boundary rejections, wrong JSON types, deactivate-via-`PUT {is_active:false}`, and double soft-delete are unexercised. Behavior reads correct; add robustness tests later.
+- OpenAPI routes use Hono-style `:id` instead of `{id}` (`src/routes/accounts.ts`) — codebase-wide pattern (also in `categories.ts`); generated OpenAPI param docs may be affected. Standardize the path-param style across all routers in one pass.
