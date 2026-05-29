@@ -8,6 +8,13 @@
       "when": 1779957157557,
       "tag": "0000_fast_johnny_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1780031671099,
+      "tag": "0001_panoramic_amazoness",
+      "breakpoints": true
     }
   ]
 }

@@ -52,7 +52,7 @@ describe("auth routes", () => {
       is_active: 1,
     });
     expect(passwordHash.startsWith("argon2id:") || passwordHash.startsWith("pbkdf2:")).toBe(true);
-  }, 30_000);
+  }, 60_000);
 
   it("supports normal login when user already exists", async () => {
     const firstRes = await app.request(
@@ -82,7 +82,7 @@ describe("auth routes", () => {
     const secondBody = loginResponseSchema.parse(await secondRes.json());
     expect(secondBody.token).toMatch(/^[a-f0-9]{64}$/);
     expect(secondBody.token).not.toBe(firstBody.token);
-  }, 30_000);
+  }, 60_000);
 
   it("returns 401 for wrong password", async () => {
     await app.request(
@@ -114,7 +114,7 @@ describe("auth routes", () => {
         message: "Invalid credentials",
       },
     });
-  }, 30_000);
+  }, 60_000);
 
   it("returns 401 for wrong password before any user exists", async () => {
     const res = await app.request(
@@ -171,7 +171,7 @@ describe("auth routes", () => {
       display_name: "Admin",
       role: "primary",
     });
-  }, 30_000);
+  }, 60_000);
 
   it("returns 401 for protected session route without token", async () => {
     const res = await app.request("/api/v1/auth/session", {}, env);
@@ -224,7 +224,7 @@ describe("auth routes", () => {
     );
 
     expect(sessionRes.status).toBe(401);
-  }, 30_000);
+  }, 60_000);
 
   it("keeps health route public", async () => {
     const res = await app.request("/api/v1/health", {}, env);
@@ -268,7 +268,7 @@ describe("auth routes", () => {
       .limit(1);
 
     expect(rows).toHaveLength(1);
-  }, 30_000);
+  }, 60_000);
 
   describe("change password", () => {
     it("changes password and allows login with the new password", async () => {
@@ -353,7 +353,7 @@ describe("auth routes", () => {
           message: "Current password is incorrect",
         },
       });
-    }, 30_000);
+    }, 60_000);
 
     it("returns 400 when new password is empty", async () => {
       const loginRes = await app.request(
@@ -387,7 +387,7 @@ describe("auth routes", () => {
       const body = await changeRes.json();
       expect(body).toHaveProperty("error");
       expect(JSON.stringify(body)).toContain("new_password");
-    }, 30_000);
+    }, 60_000);
 
     it("returns 401 when changing password without auth token", async () => {
       const res = await app.request(
@@ -447,7 +447,7 @@ describe("auth routes", () => {
           message: "Too many login attempts. Try again in 15 minutes.",
         },
       });
-    }, 30_000);
+    }, 60_000);
 
     it("resets failed-login counter after a successful login", async () => {
       for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -487,7 +487,7 @@ describe("auth routes", () => {
       expect(failedAfterResetRes.status).toBe(401);
       const body = errorResponseSchema.parse(await failedAfterResetRes.json());
       expect(body.error.code).toBe("UNAUTHORIZED");
-    }, 30_000);
+    }, 60_000);
 
     it("allows login after lockout window expires", async () => {
       await env.SESSIONS.put("rate_limit:login:global", "5", { expirationTtl: 60 });

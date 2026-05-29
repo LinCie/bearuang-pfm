@@ -2,6 +2,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { errorHandler } from "./middleware/error-handler";
 import { authRouter } from "./routes/auth";
+import { categoriesRouter } from "./routes/categories";
 import { healthRouter } from "./routes/health";
 import { setupRouter } from "./routes/setup";
 import { settingsRouter } from "./routes/settings";
@@ -45,5 +46,6 @@ app.route("/", healthRouter);
 app.route("/", setupRouter);
 app.route("/", authRouter);
 app.route("/", settingsRouter);
+app.route("/", categoriesRouter);
 
 export default app;

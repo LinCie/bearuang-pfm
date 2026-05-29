@@ -5,3 +5,4 @@
 //   4. bun run db:migrate:remote
 export { users } from "./users";
 export { settings } from "./settings";
+export { categories } from "./categories";

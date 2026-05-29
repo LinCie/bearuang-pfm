@@ -2,7 +2,6 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import type { InferInsertModel } from "drizzle-orm";
 import * as schema from "../src/db/schema/index";
-import migrationSql from "../src/db/migrations/0000_fast_johnny_storm.sql?raw";
 import { userFactory } from "./fixtures/factories";
 
 type UserInsert = InferInsertModel<typeof schema.users>;
@@ -22,20 +21,30 @@ export const applyMigrations = async (db: unknown) => {
     throw new Error("Invalid D1 database binding");
   }
 
-  // Split on Drizzle's statement-breakpoint marker rather than bare `;`
-  // so that future migrations with semicolons inside string literals are safe.
-  const statements: string[] = migrationSql
-    .split("--> statement-breakpoint")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const migrationFiles = Object.entries(
+    import.meta.glob("../src/db/migrations/*.sql", {
+      eager: true,
+      query: "?raw",
+      import: "default",
+    }),
+  ).sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
 
-  for (const statement of statements) {
-    try {
-      await db.prepare(statement).run();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (!message.includes("already exists")) {
-        throw new Error(`Migration failed on statement:\n${statement}\n\nCause: ${message}`);
+  for (const [, migrationSql] of migrationFiles) {
+    // Split on Drizzle's statement-breakpoint marker rather than bare `;`
+    // so that future migrations with semicolons inside string literals are safe.
+    const statements: string[] = migrationSql
+      .split("--> statement-breakpoint")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
+    for (const statement of statements) {
+      try {
+        await db.prepare(statement).run();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!message.includes("already exists")) {
+          throw new Error(`Migration failed on statement:\n${statement}\n\nCause: ${message}`);
+        }
       }
     }
   }

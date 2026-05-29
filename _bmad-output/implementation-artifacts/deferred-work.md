@@ -22,3 +22,10 @@
 - TOCTOU race condition on `POST /api/v1/setup/initialize` — D1 has no transaction support for Drizzle query builders and the app is single-owner, so risk is acceptable at this scale.
 - `POST /api/v1/setup/initialize` is unauthenticated and can be hijacked before the owner completes setup — revisit if multi-deployment or public-facing scenarios arise.
 - No timeout on D1/KV/R2 health-check probes — revisit when health endpoint SLA requirements are defined.
+
+## Deferred from: code review of 2-1-category-crud-seed (2026-05-29)
+
+- `applyMigrations` broad "already exists" error swallowing — substring match on error text could hide unrelated migration failures; pre-existing from Story 1.1, revisit when CI migration testing is established.
+- `auth.test.ts` timeout bump 30s→60s — out of declared story scope; functional change to accommodate argon2 runtime in test environment.
+- `tests/import-meta.d.ts` undocumented file addition — necessary for `import.meta.glob` typing to pass `check-types`; not listed in story's "Files to Create" but required by the implementation approach.
+- `settingsRouter` missing `defaultHook` — `@hono/zod-openapi` child routers do NOT inherit the parent's `defaultHook`; `settingsRouter` has no validation-error hook, meaning invalid input to settings routes may not return the standard `VALIDATION_ERROR` envelope. Add a `defaultHook` to `settingsRouter` (and all future routers) in a future story.

@@ -2,30 +2,14 @@ import { env } from "cloudflare:test";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { beforeAll, describe, expect, it } from "vitest";
-import migrationSql from "../../src/db/migrations/0000_fast_johnny_storm.sql?raw";
 import * as schema from "../../src/db/schema/index";
+import { applyMigrations } from "../setup";
 
 describe("schema migration", () => {
   const db = drizzle(env.DB, { schema });
 
   beforeAll(async () => {
-    const statements = migrationSql
-      .replaceAll("--> statement-breakpoint", "")
-      .split(";")
-      .map((statement) => statement.trim())
-      .filter(Boolean);
-
-    for (const statement of statements) {
-      try {
-        await env.DB.prepare(statement).run();
-      } catch (err) {
-        // Ignore "table already exists" errors so re-runs don't fail
-        const message = err instanceof Error ? err.message : String(err);
-        if (!message.includes("already exists")) {
-          throw new Error(`Migration failed on statement:\n${statement}\n\nCause: ${message}`);
-        }
-      }
-    }
+    await applyMigrations(env.DB);
   });
 
   it("inserts and reads a user row", async () => {
