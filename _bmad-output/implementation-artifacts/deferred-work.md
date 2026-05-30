@@ -52,3 +52,7 @@
 - No business-range bound on `date` (`src/schemas/transaction.schema.ts`) — `z.iso.date()` accepts year `0000`/`9999`; calendar-invalid dates are correctly rejected. Add min/max bounds if required.
 - UNIQUE-collision idempotency fallback string-matches `"UNIQUE constraint failed"` (`src/services/transaction.service.ts`) — brittle to D1/driver message changes; mirrors the established `category.service.ts` convention, so revisit codebase-wide.
 - Test-coverage gaps (`tests/integration/transactions.test.ts`) — AC-7 omits all three required fields simultaneously (no per-field isolation); AC-8 does not cover a soft-deleted (`is_active = 0`) account_id; the `getTransaction` null-`category_name` branch is unreachable this story.
+
+## Resolved in: Story 3.2 — Transfer Between Accounts (2026-05-30)
+
+- `db.batch()` atomicity verified: **IS atomic** in D1/Miniflare — a failing statement rolls back all preceding statements in the batch. Safe to use `db.batch()` for multi-statement operations. Permanent regression test in `tests/integration/batch-atomicity.test.ts`.

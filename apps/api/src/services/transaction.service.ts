@@ -48,10 +48,6 @@ export const createTransaction = async (
   input: CreateTransactionInput,
   userId: string,
 ): Promise<CreateTransactionResult> => {
-  if (input.type === "transfer") {
-    throw new ApiError(501, "NOT_IMPLEMENTED", "Transfers are not yet supported");
-  }
-
   if (input.id) {
     const existing = await findTransactionRow(db, input.id);
     if (existing) {
@@ -64,37 +60,54 @@ export const createTransaction = async (
     .from(accounts)
     .where(and(eq(accounts.id, input.account_id), eq(accounts.is_active, 1)))
     .limit(1);
-  const account = accountRows[0];
 
-  if (!account) {
+  if (!accountRows[0]) {
     throw new ApiError(404, "ACCOUNT_NOT_FOUND", "Account not found");
   }
 
-  if (!input.category_id) {
-    throw new ApiError(
-      400,
-      "CATEGORY_REQUIRED",
-      "category_id is required for expense and income transactions",
-    );
+  if (input.type === "transfer") {
+    if (input.account_id === input.destination_account_id) {
+      throw new ApiError(400, "TRANSFER_SAME_ACCOUNT", "Source and destination accounts must be different");
+    }
+
+    const destRows = await db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(and(eq(accounts.id, input.destination_account_id ?? ""), eq(accounts.is_active, 1)))
+      .limit(1);
+
+    if (!destRows[0]) {
+      throw new ApiError(404, "ACCOUNT_NOT_FOUND", "Destination account not found");
+    }
   }
 
-  const categoryRows = await db
-    .select({ id: categories.id, type: categories.type })
-    .from(categories)
-    .where(eq(categories.id, input.category_id))
-    .limit(1);
-  const category = categoryRows[0];
+  if (input.type !== "transfer") {
+    if (!input.category_id) {
+      throw new ApiError(
+        400,
+        "CATEGORY_REQUIRED",
+        "category_id is required for expense and income transactions",
+      );
+    }
 
-  if (!category) {
-    throw new ApiError(404, "CATEGORY_NOT_FOUND", "Category not found");
-  }
+    const categoryRows = await db
+      .select({ id: categories.id, type: categories.type })
+      .from(categories)
+      .where(eq(categories.id, input.category_id))
+      .limit(1);
+    const category = categoryRows[0];
 
-  if (category.type !== input.type) {
-    throw new ApiError(
-      400,
-      "CATEGORY_TYPE_MISMATCH",
-      `Category type "${category.type}" does not match transaction type "${input.type}"`,
-    );
+    if (!category) {
+      throw new ApiError(404, "CATEGORY_NOT_FOUND", "Category not found");
+    }
+
+    if (category.type !== input.type) {
+      throw new ApiError(
+        400,
+        "CATEGORY_TYPE_MISMATCH",
+        `Category type "${category.type}" does not match transaction type "${input.type}"`,
+      );
+    }
   }
 
   const id = input.id ?? crypto.randomUUID();
@@ -102,23 +115,25 @@ export const createTransaction = async (
   const date = input.date ?? new Date().toISOString().slice(0, 10);
 
   try {
-    await db.insert(transactions).values({
-      id,
-      type: input.type,
-      amount: input.amount,
-      account_id: input.account_id,
-      destination_account_id: null,
-      category_id: input.category_id,
-      payee: input.payee ?? null,
-      notes: input.notes ?? null,
-      date,
-      created_by: userId,
-      updated_by: userId,
-      is_deleted: 0,
-      deleted_at: null,
-      created_at: now,
-      updated_at: now,
-    });
+    await db.batch([
+      db.insert(transactions).values({
+        id,
+        type: input.type,
+        amount: input.amount,
+        account_id: input.account_id,
+        destination_account_id: input.type === "transfer" ? (input.destination_account_id ?? null) : null,
+        category_id: input.type === "transfer" ? null : (input.category_id ?? null),
+        payee: input.payee ?? null,
+        notes: input.notes ?? null,
+        date,
+        created_by: userId,
+        updated_by: userId,
+        is_deleted: 0,
+        deleted_at: null,
+        created_at: now,
+        updated_at: now,
+      }),
+    ]);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes("UNIQUE constraint failed")) {
@@ -130,12 +145,14 @@ export const createTransaction = async (
     throw err;
   }
 
-  await db
-    .update(categories)
-    .set({
-      usage_count: sql`${categories.usage_count} + 1`,
-    })
-    .where(eq(categories.id, input.category_id));
+  if (input.type !== "transfer" && input.category_id) {
+    await db
+      .update(categories)
+      .set({
+        usage_count: sql`${categories.usage_count} + 1`,
+      })
+      .where(eq(categories.id, input.category_id));
+  }
 
   const created = await findTransactionRow(db, id);
 
@@ -191,6 +208,7 @@ export const getAccountDeltas = async (
   const rows = await db
     .select({
       account_id: transactions.account_id,
+      destination_account_id: transactions.destination_account_id,
       type: transactions.type,
       amount: transactions.amount,
     })
@@ -204,11 +222,14 @@ export const getAccountDeltas = async (
 
     if (row.type === "income") {
       deltas.set(row.account_id, add(current, row.amount));
-      continue;
-    }
-
-    if (row.type === "expense") {
+    } else if (row.type === "expense") {
       deltas.set(row.account_id, subtract(current, row.amount));
+    } else if (row.type === "transfer") {
+      deltas.set(row.account_id, subtract(current, row.amount));
+      if (row.destination_account_id) {
+        const destCurrent = deltas.get(row.destination_account_id) ?? "0";
+        deltas.set(row.destination_account_id, add(destCurrent, row.amount));
+      }
     }
   }
 

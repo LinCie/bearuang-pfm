@@ -430,36 +430,301 @@ describe("transaction routes", () => {
     expect(error.error.code).toBe("VALIDATION_ERROR");
   }, 30_000);
 
-  it("rejects transfer creation for this story", async () => {
-    const { token, userId } = await login();
-    const { account, expenseCategory } = await seedAccountAndCategories(userId);
+  describe("transfers", () => {
+    const seedTwoAccounts = async (userId: string) => {
+      const source = accountFactory({
+        name: "Source Wallet",
+        type: "ewallet",
+        initial_balance: "5000000.00",
+        created_by: userId,
+        updated_by: userId,
+      });
+      const destination = accountFactory({
+        name: "Destination Bank",
+        type: "bank",
+        initial_balance: "1000000.00",
+        created_by: userId,
+        updated_by: userId,
+      });
+      await db.insert(schema.accounts).values([source, destination]);
+      return { source, destination };
+    };
 
-    const res = await app.request(
-      "/api/v1/transactions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
+    it("creates a transfer between two accounts (AC-1)", async () => {
+      const { token, userId } = await login();
+      const { source, destination } = await seedTwoAccounts(userId);
+
+      const res = await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "transfer",
+            amount: "1000000.00",
+            account_id: source.id,
+            destination_account_id: destination.id,
+            date: "2026-05-28",
+          }),
         },
-        body: JSON.stringify({
-          type: "transfer",
-          amount: "500.00",
-          account_id: account.id,
-          category_id: expenseCategory.id,
-        }),
-      },
-      env,
-    );
+        env,
+      );
 
-    expect(res.status).toBe(501);
-    expect(errorResponseSchema.parse(await res.json())).toEqual({
-      error: {
-        code: "NOT_IMPLEMENTED",
-        message: "Transfers are not yet supported",
-      },
-    });
-  }, 30_000);
+      expect(res.status).toBe(201);
+
+      const body = transactionSchema.parse(await res.json());
+      expect(body).toMatchObject({
+        type: "transfer",
+        amount: "1000000.00",
+        account_id: source.id,
+        destination_account_id: destination.id,
+        category_id: null,
+        created_by: userId,
+        updated_by: userId,
+        is_deleted: false,
+      });
+    }, 30_000);
+
+    it("reflects transfer in account balances and net_worth is unchanged (AC-2)", async () => {
+      const { token, userId } = await login();
+      const { source, destination } = await seedTwoAccounts(userId);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "transfer",
+            amount: "1000000.00",
+            account_id: source.id,
+            destination_account_id: destination.id,
+            date: "2026-05-28",
+          }),
+        },
+        env,
+      );
+
+      const accountsRes = await app.request(
+        "/api/v1/accounts",
+        { headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(accountsRes.status).toBe(200);
+
+      const accountsBody: {
+        items: { id: string; current_balance: string }[];
+        summary: { net_worth: string };
+      } = await accountsRes.json();
+
+      const sourceAccount = accountsBody.items.find((a) => a.id === source.id);
+      const destAccount = accountsBody.items.find((a) => a.id === destination.id);
+
+      // Source: 5000000.00 - 1000000.00 = 4000000.00
+      expect(sourceAccount?.current_balance).toBe("4000000.00");
+      // Destination: 1000000.00 + 1000000.00 = 2000000.00
+      expect(destAccount?.current_balance).toBe("2000000.00");
+      // Net worth unchanged: 5000000.00 + 1000000.00 = 6000000.00
+      expect(accountsBody.summary.net_worth).toBe("6000000.00");
+    }, 30_000);
+
+    it("rejects same-account transfer (AC-4)", async () => {
+      const { token, userId } = await login();
+      const { source } = await seedTwoAccounts(userId);
+
+      const res = await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "transfer",
+            amount: "500.00",
+            account_id: source.id,
+            destination_account_id: source.id,
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+      expect(errorResponseSchema.parse(await res.json())).toEqual({
+        error: {
+          code: "TRANSFER_SAME_ACCOUNT",
+          message: "Source and destination accounts must be different",
+        },
+      });
+    }, 30_000);
+
+    it("rejects transfer without destination_account_id (AC-5)", async () => {
+      const { token, userId } = await login();
+      const { source } = await seedTwoAccounts(userId);
+
+      const res = await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "transfer",
+            amount: "500.00",
+            account_id: source.id,
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("VALIDATION_ERROR");
+    }, 30_000);
+
+    it("rejects transfer with non-existent destination account (AC-6)", async () => {
+      const { token, userId } = await login();
+      const { source } = await seedTwoAccounts(userId);
+
+      const res = await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "transfer",
+            amount: "500.00",
+            account_id: source.id,
+            destination_account_id: "non-existent-account-id",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("ACCOUNT_NOT_FOUND");
+    }, 30_000);
+
+    it("rejects transfer with inactive destination account (AC-6)", async () => {
+      const { token, userId } = await login();
+      const { source, destination } = await seedTwoAccounts(userId);
+
+      // Deactivate the destination account
+      await db
+        .update(schema.accounts)
+        .set({ is_active: 0 })
+        .where(eq(schema.accounts.id, destination.id));
+
+      const res = await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "transfer",
+            amount: "500.00",
+            account_id: source.id,
+            destination_account_id: destination.id,
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("ACCOUNT_NOT_FOUND");
+    }, 30_000);
+
+    it("handles idempotent transfer creation (AC-7)", async () => {
+      const { token, userId } = await login();
+      const { source, destination } = await seedTwoAccounts(userId);
+
+      const payload = {
+        id: "transfer-idempotent-1",
+        type: "transfer",
+        amount: "250000.00",
+        account_id: source.id,
+        destination_account_id: destination.id,
+        date: "2026-05-28",
+      };
+
+      const firstRes = await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        },
+        env,
+      );
+
+      expect(firstRes.status).toBe(201);
+
+      const secondRes = await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        },
+        env,
+      );
+
+      expect(secondRes.status).toBe(200);
+
+      const replay = transactionSchema.parse(await secondRes.json());
+      expect(replay.id).toBe("transfer-idempotent-1");
+      expect(replay.amount).toBe("250000.00");
+    }, 30_000);
+
+    it("allows transfer without category_id (AC-8)", async () => {
+      const { token, userId } = await login();
+      const { source, destination } = await seedTwoAccounts(userId);
+
+      const res = await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "transfer",
+            amount: "100000.00",
+            account_id: source.id,
+            destination_account_id: destination.id,
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(201);
+
+      const body = transactionSchema.parse(await res.json());
+      expect(body.category_id).toBeNull();
+    }, 30_000);
+  });
 
   it("rejects non-positive amounts with a validation error", async () => {
     const { token, userId } = await login();

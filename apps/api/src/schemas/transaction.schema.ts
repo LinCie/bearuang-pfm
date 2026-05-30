@@ -45,6 +45,14 @@ export const createTransactionRequestSchema = z.object({
   payee: z.string().trim().max(255).optional(),
   notes: z.string().trim().max(1000).optional(),
   date: z.iso.date().optional(),
+}).superRefine((data, ctx) => {
+  if (data.type === "transfer" && !data.destination_account_id) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["destination_account_id"],
+      message: "destination_account_id is required for transfers",
+    });
+  }
 });
 
 export const transactionIdParamsSchema = z.object({

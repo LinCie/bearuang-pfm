@@ -68,14 +68,7 @@ const createTransactionRoute = createRoute({
         },
       },
     },
-    501: {
-      description: "Not implemented",
-      content: {
-        "application/json": {
-          schema: errorResponseSchema,
-        },
-      },
-    },
+
   },
 });
 
