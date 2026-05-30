@@ -1327,4 +1327,213 @@ describe("transaction routes", () => {
       expect(body.purged_count).toBe(0);
     }, 30_000);
   });
+
+  describe("list transactions", () => {
+    const createTx = async (
+      token: string,
+      overrides: Record<string, unknown>,
+    ) => {
+      const res = await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(overrides),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+      return res.json();
+    };
+
+    it("returns paginated list sorted by date desc, excludes deleted", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await createTx(token, { id: "list-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-01" });
+      await createTx(token, { id: "list-2", type: "expense", amount: "200.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-02" });
+      await createTx(token, { id: "list-3", type: "expense", amount: "300.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-03" });
+
+      // Soft-delete one
+      await app.request("/api/v1/transactions/list-1", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }, env);
+
+      const res = await app.request("/api/v1/transactions", { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res.status).toBe(200);
+
+      const body: { items: { id: string; date: string }[]; next_cursor: string | null; has_more: boolean } = await res.json();
+      expect(body.has_more).toBe(false);
+      expect(body.next_cursor).toBeNull();
+      expect(body.items).toHaveLength(2);
+      // Sorted newest first
+      expect(body.items[0]!.id).toBe("list-3");
+      expect(body.items[1]!.id).toBe("list-2");
+    }, 30_000);
+
+    it("paginates with cursor", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      // Create 3 transactions, request page_size=2
+      await createTx(token, { id: "pg-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-01" });
+      await createTx(token, { id: "pg-2", type: "expense", amount: "200.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-02" });
+      await createTx(token, { id: "pg-3", type: "expense", amount: "300.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-03" });
+
+      const res1 = await app.request("/api/v1/transactions?page_size=2", { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res1.status).toBe(200);
+
+      const page1: { items: { id: string }[]; next_cursor: string; has_more: boolean } = await res1.json();
+      expect(page1.items).toHaveLength(2);
+      expect(page1.has_more).toBe(true);
+      expect(page1.next_cursor).not.toBeNull();
+      expect(page1.items[0]!.id).toBe("pg-3");
+      expect(page1.items[1]!.id).toBe("pg-2");
+
+      const res2 = await app.request(`/api/v1/transactions?page_size=2&cursor=${page1.next_cursor}`, { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res2.status).toBe(200);
+
+      const page2: { items: { id: string }[]; next_cursor: string | null; has_more: boolean } = await res2.json();
+      expect(page2.items).toHaveLength(1);
+      expect(page2.has_more).toBe(false);
+      expect(page2.next_cursor).toBeNull();
+      expect(page2.items[0]!.id).toBe("pg-1");
+    }, 30_000);
+
+    it("filters by date range", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await createTx(token, { id: "dr-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-04-15" });
+      await createTx(token, { id: "dr-2", type: "expense", amount: "200.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-10" });
+      await createTx(token, { id: "dr-3", type: "expense", amount: "300.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-06-01" });
+
+      const res = await app.request("/api/v1/transactions?start_date=2026-05-01&end_date=2026-05-31", { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res.status).toBe(200);
+
+      const body: { items: { id: string }[] } = await res.json();
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0]!.id).toBe("dr-2");
+    }, 30_000);
+
+    it("filters by account_id including transfers", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+      const account2 = accountFactory({ name: "Wallet", type: "ewallet", initial_balance: "0", created_by: userId, updated_by: userId });
+      await db.insert(schema.accounts).values(account2);
+
+      await createTx(token, { id: "af-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-01" });
+      await createTx(token, { id: "af-2", type: "transfer", amount: "500.00", account_id: account2.id, destination_account_id: account.id, date: "2026-05-02" });
+
+      // Filter by account.id — should get both (expense from account, transfer TO account)
+      const res = await app.request(`/api/v1/transactions?account_id=${account.id}`, { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res.status).toBe(200);
+
+      const body: { items: { id: string }[] } = await res.json();
+      expect(body.items).toHaveLength(2);
+      const ids = body.items.map((i) => i.id);
+      expect(ids).toContain("af-1");
+      expect(ids).toContain("af-2");
+    }, 30_000);
+
+    it("filters by category_id", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory, incomeCategory } = await seedAccountAndCategories(userId);
+
+      await createTx(token, { id: "cf-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-01" });
+      await createTx(token, { id: "cf-2", type: "income", amount: "200.00", account_id: account.id, category_id: incomeCategory.id, date: "2026-05-02" });
+
+      const res = await app.request(`/api/v1/transactions?category_id=${expenseCategory.id}`, { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res.status).toBe(200);
+
+      const body: { items: { id: string }[] } = await res.json();
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0]!.id).toBe("cf-1");
+    }, 30_000);
+
+    it("filters by amount range", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await createTx(token, { id: "ar-1", type: "expense", amount: "50000.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-01" });
+      await createTx(token, { id: "ar-2", type: "expense", amount: "150000.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-02" });
+      await createTx(token, { id: "ar-3", type: "expense", amount: "600000.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-03" });
+
+      const res = await app.request("/api/v1/transactions?min_amount=100000&max_amount=500000", { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res.status).toBe(200);
+
+      const body: { items: { id: string }[] } = await res.json();
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0]!.id).toBe("ar-2");
+    }, 30_000);
+
+    it("searches by payee, notes, and category name (q param)", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await createTx(token, { id: "q-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-01", payee: "Warung Makan" });
+      await createTx(token, { id: "q-2", type: "expense", amount: "200.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-02", notes: "lunch at warung" });
+      await createTx(token, { id: "q-3", type: "expense", amount: "300.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-03", payee: "Supermarket" });
+
+      // Search "warung" — should match q-1 (payee) and q-2 (notes)
+      const res = await app.request("/api/v1/transactions?q=warung", { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res.status).toBe(200);
+
+      const body: { items: { id: string }[] } = await res.json();
+      expect(body.items).toHaveLength(2);
+      const ids = body.items.map((i) => i.id);
+      expect(ids).toContain("q-1");
+      expect(ids).toContain("q-2");
+
+      // Search by category name "Food" — should match all 3
+      const res2 = await app.request("/api/v1/transactions?q=food", { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res2.status).toBe(200);
+
+      const body2: { items: { id: string }[] } = await res2.json();
+      expect(body2.items).toHaveLength(3);
+    }, 30_000);
+
+    it("combines multiple filters with AND logic", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await createTx(token, { id: "combo-1", type: "expense", amount: "100000.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-10", payee: "Warung" });
+      await createTx(token, { id: "combo-2", type: "expense", amount: "200000.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-06-10", payee: "Warung" });
+      await createTx(token, { id: "combo-3", type: "expense", amount: "50000.00", account_id: account.id, category_id: expenseCategory.id, date: "2026-05-15", payee: "Warung" });
+
+      // Combine date range + amount range: only combo-1 matches (May + amount >= 100000)
+      const res = await app.request(
+        `/api/v1/transactions?start_date=2026-05-01&end_date=2026-05-31&min_amount=100000`,
+        { headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+      expect(res.status).toBe(200);
+
+      const body: { items: { id: string }[] } = await res.json();
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0]!.id).toBe("combo-1");
+    }, 30_000);
+
+    it("returns empty result for no matches", async () => {
+      const { token, userId } = await login();
+      await seedAccountAndCategories(userId);
+
+      const res = await app.request("/api/v1/transactions?q=nonexistent", { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res.status).toBe(200);
+
+      const body: { items: unknown[]; next_cursor: string | null; has_more: boolean } = await res.json();
+      expect(body.items).toHaveLength(0);
+      expect(body.next_cursor).toBeNull();
+      expect(body.has_more).toBe(false);
+    }, 30_000);
+
+    it("returns 400 for invalid cursor", async () => {
+      const { token, userId } = await login();
+      await seedAccountAndCategories(userId);
+
+      const res = await app.request("/api/v1/transactions?cursor=invalid!!!", { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res.status).toBe(400);
+
+      const body: { error: { code: string } } = await res.json();
+      expect(body.error.code).toBe("INVALID_CURSOR");
+    }, 30_000);
+  });
 });

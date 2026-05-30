@@ -8,4 +8,11 @@ export const errorResponseSchema = z.object({
   }),
 });
 
+export const paginatedResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
+  z.object({
+    items: z.array(itemSchema),
+    next_cursor: z.string().nullable(),
+    has_more: z.boolean(),
+  });
+
 export type ErrorResponse = z.infer<typeof errorResponseSchema>;

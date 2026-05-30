@@ -1,8 +1,9 @@
-import { and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, gte, lte, lt, or, sql, desc } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { HTTPException } from "hono/http-exception";
 import { accounts, categories, transactions } from "../db/schema";
 import { ApiError } from "../lib/api-error";
+import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { add, subtract } from "../lib/decimal";
 import type {
   Transaction,
@@ -427,4 +428,120 @@ export const purgeTrash = async (
   }
 
   return purgedCount;
+};
+
+interface ListTransactionsParams {
+  cursor?: string;
+  page_size?: number;
+  start_date?: string;
+  end_date?: string;
+  account_id?: string;
+  category_id?: string;
+  min_amount?: string;
+  max_amount?: string;
+  q?: string;
+}
+
+interface ListTransactionsResult {
+  items: Transaction[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export const listTransactions = async (
+  db: DrizzleD1Database,
+  params: ListTransactionsParams,
+): Promise<ListTransactionsResult> => {
+  const pageSize = params.page_size ?? 50;
+  const conditions: ReturnType<typeof eq>[] = [eq(transactions.is_deleted, 0)];
+
+  if (params.cursor) {
+    const { date, id } = decodeCursor(params.cursor);
+    conditions.push(
+      or(
+        lt(transactions.date, date),
+        and(eq(transactions.date, date), lt(transactions.id, id))!,
+      )!,
+    );
+  }
+
+  if (params.start_date) {
+    conditions.push(gte(transactions.date, params.start_date));
+  }
+  if (params.end_date) {
+    conditions.push(lte(transactions.date, params.end_date));
+  }
+
+  if (params.account_id) {
+    conditions.push(
+      or(
+        eq(transactions.account_id, params.account_id),
+        eq(transactions.destination_account_id, params.account_id),
+      )!,
+    );
+  }
+
+  if (params.category_id) {
+    conditions.push(eq(transactions.category_id, params.category_id));
+  }
+
+  const amountExpr = sql<number>`CAST(${transactions.amount} AS REAL)`;
+  if (params.min_amount) {
+    conditions.push(gte(amountExpr, Number(params.min_amount)));
+  }
+  if (params.max_amount) {
+    conditions.push(lte(amountExpr, Number(params.max_amount)));
+  }
+
+  if (params.q) {
+    const escaped = params.q.toLowerCase().replace(/[%_\\]/g, "\\$&");
+    const pattern = `%${escaped}%`;
+    conditions.push(
+      or(
+        sql`LOWER(${transactions.payee}) LIKE ${pattern} ESCAPE '\\'`,
+        sql`LOWER(${transactions.notes}) LIKE ${pattern} ESCAPE '\\'`,
+        sql`LOWER(${categories.name}) LIKE ${pattern} ESCAPE '\\'`,
+      )!,
+    );
+  }
+
+  const query = db
+    .select({
+      id: transactions.id,
+      type: transactions.type,
+      amount: transactions.amount,
+      account_id: transactions.account_id,
+      destination_account_id: transactions.destination_account_id,
+      category_id: transactions.category_id,
+      payee: transactions.payee,
+      notes: transactions.notes,
+      date: transactions.date,
+      created_by: transactions.created_by,
+      updated_by: transactions.updated_by,
+      is_deleted: transactions.is_deleted,
+      deleted_at: transactions.deleted_at,
+      created_at: transactions.created_at,
+      updated_at: transactions.updated_at,
+    })
+    .from(transactions);
+
+  if (params.q) {
+    query.leftJoin(categories, eq(transactions.category_id, categories.id));
+  }
+
+  const rows = await query
+    .where(and(...conditions))
+    .orderBy(desc(transactions.date), desc(transactions.id))
+    .limit(pageSize + 1);
+
+  const hasMore = rows.length > pageSize;
+  const items = hasMore ? rows.slice(0, pageSize) : rows;
+  const lastItem = items[items.length - 1];
+  const nextCursor = hasMore && lastItem ? encodeCursor(lastItem.date, lastItem.id) : null;
+
+  return {
+    items: items.map(toTransaction),
+    next_cursor: nextCursor,
+    has_more: hasMore,
+  };
 };

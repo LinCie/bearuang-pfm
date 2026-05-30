@@ -78,6 +78,18 @@ export const purgeResponseSchema = z.object({
   purged_count: z.number(),
 });
 
+export const listTransactionsQuerySchema = z.object({
+  cursor: z.string().optional(),
+  page_size: z.coerce.number().int().min(1).max(50).optional().default(50),
+  start_date: z.string().date().optional(),
+  end_date: z.string().date().optional(),
+  account_id: z.string().min(1).optional(),
+  category_id: z.string().min(1).optional(),
+  min_amount: z.string().regex(/^\d+(\.\d+)?$/).optional(),
+  max_amount: z.string().regex(/^\d+(\.\d+)?$/).optional(),
+  q: z.string().min(1).max(100).optional(),
+});
+
 export type TransactionType = z.infer<typeof transactionTypeSchema>;
 export type Transaction = z.infer<typeof transactionSchema>;
 export type TransactionDetail = z.infer<typeof transactionDetailSchema>;

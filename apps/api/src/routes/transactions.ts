@@ -1,9 +1,10 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
 import { drizzle } from "drizzle-orm/d1";
 import { authMiddleware } from "../middleware/auth";
-import { errorResponseSchema } from "../schemas/common.schema";
+import { errorResponseSchema, paginatedResponseSchema } from "../schemas/common.schema";
 import {
   createTransactionRequestSchema,
+  listTransactionsQuerySchema,
   purgeResponseSchema,
   transactionDetailSchema,
   transactionIdParamsSchema,
@@ -15,6 +16,7 @@ import {
   createTransaction,
   getTransaction,
   listTrash,
+  listTransactions,
   purgeTrash,
   restoreTransaction,
   softDeleteTransaction,
@@ -77,6 +79,41 @@ const createTransactionRoute = createRoute({
       },
     },
 
+  },
+});
+
+const listTransactionsRoute = createRoute({
+  method: "get",
+  path: "/api/v1/transactions",
+  security: [{ Bearer: [] }],
+  request: {
+    query: listTransactionsQuerySchema,
+  },
+  responses: {
+    200: {
+      description: "Paginated transaction list",
+      content: {
+        "application/json": {
+          schema: paginatedResponseSchema(transactionSchema),
+        },
+      },
+    },
+    400: {
+      description: "Invalid cursor or query params",
+      content: {
+        "application/json": {
+          schema: errorResponseSchema,
+        },
+      },
+    },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": {
+          schema: errorResponseSchema,
+        },
+      },
+    },
   },
 });
 
@@ -264,6 +301,13 @@ transactionsRouter.openapi(createTransactionRoute, async (c) => {
   const result = await createTransaction(db, input, userId);
 
   return c.json(result.transaction, result.replayed ? 200 : 201);
+});
+
+transactionsRouter.openapi(listTransactionsRoute, async (c) => {
+  const db = drizzle(c.env.DB);
+  const query = c.req.valid("query");
+  const result = await listTransactions(db, query);
+  return c.json(result, 200);
 });
 
 // Register literal paths before parameterized paths
