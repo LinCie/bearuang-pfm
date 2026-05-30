@@ -16,6 +16,7 @@ import {
 const createTransactionRoute = createRoute({
   method: "post",
   path: "/api/v1/transactions",
+  security: [{ Bearer: [] }],
   request: {
     body: {
       content: {
@@ -81,6 +82,7 @@ const createTransactionRoute = createRoute({
 const getTransactionRoute = createRoute({
   method: "get",
   path: "/api/v1/transactions/{id}",
+  security: [{ Bearer: [] }],
   request: {
     params: transactionIdParamsSchema,
   },

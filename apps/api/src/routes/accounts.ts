@@ -20,6 +20,7 @@ import {
 const createAccountRoute = createRoute({
   method: "post",
   path: "/api/v1/accounts",
+  security: [{ Bearer: [] }],
   request: {
     body: {
       content: {
@@ -61,6 +62,7 @@ const createAccountRoute = createRoute({
 const listAccountsRoute = createRoute({
   method: "get",
   path: "/api/v1/accounts",
+  security: [{ Bearer: [] }],
   responses: {
     200: {
       description: "Accounts list",
@@ -84,6 +86,7 @@ const listAccountsRoute = createRoute({
 const getAccountRoute = createRoute({
   method: "get",
   path: "/api/v1/accounts/{id}",
+  security: [{ Bearer: [] }],
   request: {
     params: accountIdParamsSchema,
   },
@@ -118,6 +121,7 @@ const getAccountRoute = createRoute({
 const updateAccountRoute = createRoute({
   method: "put",
   path: "/api/v1/accounts/{id}",
+  security: [{ Bearer: [] }],
   request: {
     params: accountIdParamsSchema,
     body: {
@@ -168,6 +172,7 @@ const updateAccountRoute = createRoute({
 const deleteAccountRoute = createRoute({
   method: "delete",
   path: "/api/v1/accounts/{id}",
+  security: [{ Bearer: [] }],
   request: {
     params: accountIdParamsSchema,
   },

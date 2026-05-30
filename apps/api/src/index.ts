@@ -1,4 +1,5 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { Scalar } from "@scalar/hono-api-reference";
 import { cors } from "hono/cors";
 import { errorHandler } from "./middleware/error-handler";
 import { accountsRouter } from "./routes/accounts";
@@ -40,7 +41,9 @@ app.use(
 app.onError(errorHandler);
 app.notFound((c) =>
   c.json(
-    errorResponseSchema.parse({ error: { code: "NOT_FOUND", message: "Route not found" } }),
+    errorResponseSchema.parse({
+      error: { code: "NOT_FOUND", message: "Route not found" },
+    }),
     404,
   ),
 );
@@ -51,5 +54,30 @@ app.route("/", settingsRouter);
 app.route("/", categoriesRouter);
 app.route("/", accountsRouter);
 app.route("/", transactionsRouter);
+
+// Bearer session-token auth scheme, referenced by protected routes via `security: [{ Bearer: [] }]`.
+app.openAPIRegistry.registerComponent("securitySchemes", "Bearer", {
+  type: "http",
+  scheme: "bearer",
+});
+
+// OpenAPI 3.1 document (Zod v4 → 3.1 avoids 3.0 nullable/serialization quirks).
+// Served at GET /doc; point a client generator (openapi-typescript, orval, etc.) at it.
+app.doc31("/doc", {
+  openapi: "3.1.0",
+  info: {
+    version: "1.0.0",
+    title: "bearuang API",
+    description:
+      "Private, self-deployed personal finance API (Hono on Cloudflare Workers).",
+  },
+  servers: [{ url: "/", description: "Current origin" }],
+});
+
+// Scalar interactive API reference UI, rendered from the /doc spec.
+app.get(
+  "/scalar",
+  Scalar({ url: "/doc", pageTitle: "bearuang API Reference", theme: "bluePlanet" }),
+);
 
 export default app;

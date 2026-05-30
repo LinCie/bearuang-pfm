@@ -13,6 +13,7 @@ import {
 const getSettingsRoute = createRoute({
   method: "get",
   path: "/api/v1/settings",
+  security: [{ Bearer: [] }],
   responses: {
     200: {
       description: "Settings list",
@@ -36,6 +37,7 @@ const getSettingsRoute = createRoute({
 const updateSettingsRoute = createRoute({
   method: "put",
   path: "/api/v1/settings",
+  security: [{ Bearer: [] }],
   request: {
     body: {
       content: {

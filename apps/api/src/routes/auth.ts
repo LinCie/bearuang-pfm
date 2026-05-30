@@ -51,6 +51,7 @@ const loginRoute = createRoute({
 const logoutRoute = createRoute({
   method: "post",
   path: "/api/v1/auth/logout",
+  security: [{ Bearer: [] }],
   responses: {
     204: {
       description: "Logged out successfully",
@@ -69,6 +70,7 @@ const logoutRoute = createRoute({
 const sessionRoute = createRoute({
   method: "get",
   path: "/api/v1/auth/session",
+  security: [{ Bearer: [] }],
   responses: {
     200: {
       description: "Session details",
@@ -92,6 +94,7 @@ const sessionRoute = createRoute({
 const changePasswordRoute = createRoute({
   method: "post",
   path: "/api/v1/auth/change-password",
+  security: [{ Bearer: [] }],
   request: {
     body: {
       content: {

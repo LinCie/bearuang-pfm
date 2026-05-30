@@ -21,6 +21,7 @@ import {
 const createCategoryRoute = createRoute({
   method: "post",
   path: "/api/v1/categories",
+  security: [{ Bearer: [] }],
   request: {
     body: {
       content: {
@@ -62,6 +63,7 @@ const createCategoryRoute = createRoute({
 const listCategoriesRoute = createRoute({
   method: "get",
   path: "/api/v1/categories",
+  security: [{ Bearer: [] }],
   request: {
     query: listCategoriesQuerySchema,
   },
@@ -96,6 +98,7 @@ const listCategoriesRoute = createRoute({
 const seedCategoriesRoute = createRoute({
   method: "post",
   path: "/api/v1/categories/seed",
+  security: [{ Bearer: [] }],
   responses: {
     200: {
       description: "Seeded categories",
@@ -119,6 +122,7 @@ const seedCategoriesRoute = createRoute({
 const updateCategoryRoute = createRoute({
   method: "put",
   path: "/api/v1/categories/{id}",
+  security: [{ Bearer: [] }],
   request: {
     params: categoryIdParamsSchema,
     body: {
@@ -169,6 +173,7 @@ const updateCategoryRoute = createRoute({
 const deleteCategoryRoute = createRoute({
   method: "delete",
   path: "/api/v1/categories/{id}",
+  security: [{ Bearer: [] }],
   request: {
     params: categoryIdParamsSchema,
   },
