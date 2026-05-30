@@ -5,6 +5,7 @@ import { accounts, categories, transactions } from "../db/schema";
 import { ApiError } from "../lib/api-error";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { add, subtract } from "../lib/decimal";
+import { deleteReceiptsForTransactions } from "./receipt.service";
 import type {
   Transaction,
   TransactionDetail,
@@ -412,16 +413,23 @@ export const restoreTransaction = async (
 
 export const purgeTrash = async (
   db: DrizzleD1Database,
+  r2Bucket: R2Bucket,
 ): Promise<number> => {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  const countResult = await db
-    .select({ count: sql<number>`COUNT(*)` })
+  const toDelete = await db
+    .select({ id: transactions.id })
     .from(transactions)
     .where(and(eq(transactions.is_deleted, 1), lt(transactions.deleted_at, cutoff)));
-  const purgedCount = countResult[0]?.count ?? 0;
+
+  const purgedCount = toDelete.length;
 
   if (purgedCount > 0) {
+    const transactionIds = toDelete.map((r) => r.id);
+
+    // Delete associated receipts from R2 and D1
+    await deleteReceiptsForTransactions(db, r2Bucket, transactionIds);
+
     await db.delete(transactions).where(
       and(eq(transactions.is_deleted, 1), lt(transactions.deleted_at, cutoff)),
     );

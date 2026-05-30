@@ -63,3 +63,16 @@
 - `purgeTrash` can't clean rows with NULL `deleted_at` — defensive edge case; no current code path produces this state (softDeleteTransaction always sets deleted_at).
 - `listTrash` has no pagination — unbounded result set; acceptable for MVP single-user low volume.
 - `updateTransactionRequestSchema` allows empty body (all fields optional, no refinement) — triggers a no-op DB write; harmless, low priority.
+
+## Deferred from: code review of 4-3-receipt-upload-management (2026-05-31)
+
+- No per-user authorization on receipt upload/list/delete (`apps/api/src/routes/receipts.ts`) — any authenticated session can act on any transaction's or receipt's data; consistent with the app-wide pattern (no service filters by `created_by`). Revisit when Epic 6 collaboration introduces multiple users.
+- Client-supplied `content_type` is trusted; no magic-byte validation (`apps/api/src/services/receipt.service.ts`) — a file with a spoofed type is stored and later served from R2 with that type. Security hardening; low risk in a private app where the owner uploads their own files.
+- Worker-proxied upload deviates from `architecture.md` NFR-PERF-03 mapping ("Direct R2 upload via presigned URL (no Worker proxy)") and the storage note "access only via presigned URLs" — the story's Dev Notes deliberately chose worker-proxied upload via the R2 binding and the epic AC mandates multipart upload. Update the architecture doc so it isn't contradictory (downloads still use presigned URLs, so NFR-SEC-08 holds).
+- Bulk receipt delete uses `Promise.all` instead of `allSettled` (`deleteReceiptsForTransactions`, `apps/api/src/services/receipt.service.ts`) — a single R2 delete rejection aborts purge cleanup mid-way; retry-safe because R2 delete is idempotent, but worth hardening.
+- Content-type with parameters (e.g. `image/jpeg; charset=utf-8`) fails the exact-match allowlist (`apps/api/src/services/receipt.service.ts`) — split on `;` before matching if any client sends parameterized types.
+- Zero-byte file is accepted (`apps/api/src/services/receipt.service.ts`) — stores an empty, useless object; add a `size === 0` guard if desired.
+- `listReceipts` uses `Promise.all` over presigned-URL generation (`apps/api/src/services/receipt.service.ts`) — one failure fails the entire list response; signing is local so failure is unlikely.
+- Missing R2 secrets produce a cryptic `aws4fetch` signing error at request time (`apps/api/src/lib/r2.ts`) — add explicit validation of `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`.
+- No cap on the number of receipts per transaction (`apps/api/src/services/receipt.service.ts`) — unbounded uploads can grow storage; low risk for a private app.
+- `deleteReceiptsForTransactions` builds an unbounded `IN (...)` clause and `Promise.all` of R2 deletes (`apps/api/src/services/receipt.service.ts`) — batch in chunks if a single purge can span many transactions.

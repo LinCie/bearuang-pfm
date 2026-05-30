@@ -319,7 +319,7 @@ transactionsRouter.openapi(listTrashRoute, async (c) => {
 
 transactionsRouter.openapi(purgeTrashRoute, async (c) => {
   const db = drizzle(c.env.DB);
-  const purged_count = await purgeTrash(db);
+  const purged_count = await purgeTrash(db, c.env.RECEIPTS);
   return c.json({ purged_count }, 200);
 });
 

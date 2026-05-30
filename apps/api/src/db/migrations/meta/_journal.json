@@ -36,6 +36,13 @@
       "when": 1780151517191,
       "tag": "0004_hot_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1780162912403,
+      "tag": "0005_worried_sabretooth",
+      "breakpoints": true
     }
   ]
 }

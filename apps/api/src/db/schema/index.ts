@@ -9,3 +9,4 @@ export { categories } from "./categories";
 export { accounts } from "./accounts";
 export { transactions } from "./transactions";
 export { recurringTemplates, recurringOccurrences } from "./recurring";
+export { receipts } from "./receipts";
