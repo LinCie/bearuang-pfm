@@ -460,4 +460,570 @@ describe("recurring routes", () => {
       expect(body.items[0]?.next_due_date).toBe("2026-07-01");
     });
   });
+
+  describe("GET /api/v1/recurring/:id/upcoming", () => {
+    it("returns upcoming occurrences for a monthly template", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "100000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/upcoming?limit=3`,
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { items: { id: string; due_date: string; status: string }[] } = await res.json();
+      expect(body.items).toHaveLength(3);
+      expect(body.items[0]?.due_date).toBe("2026-06-01");
+      expect(body.items[1]?.due_date).toBe("2026-07-01");
+      expect(body.items[2]?.due_date).toBe("2026-08-01");
+      expect(body.items[0]?.status).toBe("pending");
+    });
+
+    it("returns weekly occurrences with 7-day intervals", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "weekly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/upcoming?limit=4`,
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { items: { due_date: string }[] } = await res.json();
+      expect(body.items[0]?.due_date).toBe("2026-06-01");
+      expect(body.items[1]?.due_date).toBe("2026-06-08");
+      expect(body.items[2]?.due_date).toBe("2026-06-15");
+      expect(body.items[3]?.due_date).toBe("2026-06-22");
+    });
+
+    it("returns biweekly occurrences with 14-day intervals", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "75000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "biweekly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/upcoming?limit=3`,
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { items: { due_date: string }[] } = await res.json();
+      expect(body.items[0]?.due_date).toBe("2026-06-01");
+      expect(body.items[1]?.due_date).toBe("2026-06-15");
+      expect(body.items[2]?.due_date).toBe("2026-06-29");
+    });
+
+    it("clamps month-end dates (Jan 31 → Feb 28)", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "200000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-01-31",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/upcoming?limit=3`,
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { items: { due_date: string }[] } = await res.json();
+      expect(body.items[0]?.due_date).toBe("2026-01-31");
+      expect(body.items[1]?.due_date).toBe("2026-02-28");
+      expect(body.items[2]?.due_date).toBe("2026-03-28");
+    });
+
+    it("handles yearly with leap year (Feb 29 → Feb 28 in non-leap year)", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "1000000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "yearly",
+        start_date: "2024-02-29",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/upcoming?limit=3`,
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { items: { due_date: string }[] } = await res.json();
+      expect(body.items[0]?.due_date).toBe("2024-02-29");
+      expect(body.items[1]?.due_date).toBe("2025-02-28");
+      expect(body.items[2]?.due_date).toBe("2026-02-28");
+    });
+
+    it("does not generate occurrences past end_date", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+        end_date: "2026-08-15",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/upcoming?limit=12`,
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { items: { due_date: string }[] } = await res.json();
+      expect(body.items).toHaveLength(3);
+      expect(body.items[2]?.due_date).toBe("2026-08-01");
+    });
+
+    it("merges existing DB occurrences with computed ones", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      const occId = crypto.randomUUID();
+      await db.insert(schema.recurringOccurrences).values({
+        id: occId,
+        template_id: created.id,
+        due_date: "2026-06-01",
+        status: "posted",
+        transaction_id: null,
+        created_at: new Date().toISOString(),
+      });
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/upcoming?limit=3`,
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { items: { id: string; due_date: string; status: string; transaction_id: string | null }[] } = await res.json();
+      expect(body.items[0]?.id).toBe(occId);
+      expect(body.items[0]?.status).toBe("posted");
+      expect(body.items[0]?.transaction_id).toBeNull();
+      expect(body.items[1]?.status).toBe("pending");
+      expect(body.items[1]?.id).toBe("2026-07-01");
+    });
+
+    it("returns 404 for non-existent template", async () => {
+      const { token } = await login();
+
+      const res = await app.request(
+        "/api/v1/recurring/non-existent/upcoming",
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+    });
+
+    it("defaults to 12 occurrences when no limit specified", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/upcoming`,
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { items: unknown[] } = await res.json();
+      expect(body.items).toHaveLength(12);
+    });
+  });
+
+  describe("POST /api/v1/recurring/:id/occurrences/:occId/confirm", () => {
+    it("creates a transaction and marks occurrence as posted", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "150000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+        payee: "Internet Provider",
+        notes: "Monthly internet",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/occurrences/2026-06-01/confirm`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { occurrence: { status: string; transaction_id: string }; transaction: { id: string; type: string; amount: string; date: string; payee: string; notes: string } } = await res.json();
+      expect(body.occurrence.status).toBe("posted");
+      expect(body.occurrence.transaction_id).toBe(body.transaction.id);
+      expect(body.transaction.type).toBe("expense");
+      expect(body.transaction.amount).toBe("150000.00");
+      expect(body.transaction.date).toBe("2026-06-01");
+      expect(body.transaction.payee).toBe("Internet Provider");
+      expect(body.transaction.notes).toBe("Monthly internet");
+    });
+
+    it("updates account balance after confirm", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "100000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      await app.request(
+        `/api/v1/recurring/${created.id}/occurrences/2026-06-01/confirm`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      // Check account balance reflects the expense
+      const accountRes = await app.request(
+        "/api/v1/accounts",
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+      expect(accountRes.status).toBe(200);
+      const accountBody: { items: { id: string; current_balance: string }[] } = await accountRes.json();
+      const acct = accountBody.items.find((a) => a.id === account.id);
+      expect(acct?.current_balance).toBe("-100000.00");
+    });
+
+    it("returns 409 for already-posted occurrence", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      // First confirm
+      await app.request(
+        `/api/v1/recurring/${created.id}/occurrences/2026-06-01/confirm`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      // Second confirm → 409
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/occurrences/2026-06-01/confirm`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(409);
+      const body = errorResponseSchema.parse(await res.json());
+      expect(body.error.code).toBe("OCCURRENCE_ALREADY_PROCESSED");
+    });
+
+    it("returns 404 for non-existent template", async () => {
+      const { token } = await login();
+
+      const res = await app.request(
+        "/api/v1/recurring/non-existent/occurrences/2026-06-01/confirm",
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 404 for invalid occurrence id format", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/occurrences/invalid-format/confirm`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("POST /api/v1/recurring/:id/occurrences/:occId/skip", () => {
+    it("marks occurrence as skipped without creating transaction", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/occurrences/2026-06-01/skip`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { status: string; transaction_id: string | null } = await res.json();
+      expect(body.status).toBe("skipped");
+      expect(body.transaction_id).toBeNull();
+    });
+
+    it("does not affect account balance", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      await app.request(
+        `/api/v1/recurring/${created.id}/occurrences/2026-06-01/skip`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      const accountRes = await app.request(
+        "/api/v1/accounts",
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+      expect(accountRes.status).toBe(200);
+      const accountBody: { items: { id: string; current_balance: string }[] } = await accountRes.json();
+      const acct = accountBody.items.find((a) => a.id === account.id);
+      expect(acct?.current_balance).toBe("0");
+    });
+
+    it("returns 409 for already-skipped occurrence", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      await app.request(
+        `/api/v1/recurring/${created.id}/occurrences/2026-06-01/skip`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/occurrences/2026-06-01/skip`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(409);
+      const body = errorResponseSchema.parse(await res.json());
+      expect(body.error.code).toBe("OCCURRENCE_ALREADY_PROCESSED");
+    });
+
+    it("returns 409 when trying to skip a posted occurrence", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      const createRes = await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+      });
+      const created = recurringTemplateSchema.parse(await createRes.json());
+
+      await app.request(
+        `/api/v1/recurring/${created.id}/occurrences/2026-06-01/confirm`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      const res = await app.request(
+        `/api/v1/recurring/${created.id}/occurrences/2026-06-01/skip`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(409);
+    });
+
+    it("returns 404 for non-existent template", async () => {
+      const { token } = await login();
+
+      const res = await app.request(
+        "/api/v1/recurring/non-existent/occurrences/2026-06-01/skip",
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("GET /api/v1/recurring?upcoming_days=N", () => {
+    it("returns consolidated upcoming across all templates", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      // Create a template with start_date in the past so occurrences fall within upcoming_days
+      const today = new Date().toISOString().slice(0, 10);
+      await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "daily",
+        start_date: today,
+        payee: "Daily Coffee",
+      });
+
+      const res = await app.request(
+        "/api/v1/recurring?upcoming_days=7",
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { items: { template_payee: string; template_amount: string; due_date: string; account_id: string }[] } = await res.json();
+      expect(body.items.length).toBeGreaterThanOrEqual(1);
+      expect(body.items[0]?.template_payee).toBe("Daily Coffee");
+      expect(body.items[0]?.template_amount).toBe("50000.00");
+      expect(body.items[0]?.account_id).toBeDefined();
+    });
+
+    it("returns regular template list when upcoming_days is not provided", async () => {
+      const { token, userId } = await login();
+      const { account, category } = await seedAccountAndCategory(userId);
+
+      await createRecurring(token, {
+        type: "expense",
+        amount: "50000.00",
+        account_id: account.id,
+        category_id: category.id,
+        frequency: "monthly",
+        start_date: "2026-06-01",
+      });
+
+      const res = await app.request(
+        "/api/v1/recurring",
+        { method: "GET", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = recurringListResponseSchema.parse(await res.json());
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0]?.next_due_date).toBeDefined();
+    });
+  });
 });

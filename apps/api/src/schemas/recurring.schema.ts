@@ -66,6 +66,64 @@ export const recurringListResponseSchema = z.object({
   items: z.array(recurringTemplateWithNextSchema),
 });
 
+export const upcomingQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(52).default(12),
+});
+
+export const upcomingDaysQuerySchema = z.object({
+  upcoming_days: z.coerce.number().int().min(1).max(365).optional(),
+});
+
+export const occurrenceParamsSchema = z.object({
+  id: z.string().min(1),
+  occId: z.string().min(1),
+});
+
+export const occurrenceResponseSchema = z.object({
+  id: z.string(),
+  template_id: z.string(),
+  due_date: z.string(),
+  status: z.enum(["pending", "posted", "skipped"]),
+  transaction_id: z.string().nullable(),
+});
+
+export const upcomingResponseSchema = z.object({
+  items: z.array(occurrenceResponseSchema),
+});
+
+export const upcomingWithTemplateSchema = occurrenceResponseSchema.extend({
+  template_payee: z.string().nullable(),
+  template_amount: z.string(),
+  template_type: z.enum(["expense", "income"]),
+  template_frequency: frequencySchema,
+  account_id: z.string(),
+});
+
+export const upcomingAcrossResponseSchema = z.object({
+  items: z.array(upcomingWithTemplateSchema),
+});
+
+export const confirmResponseSchema = z.object({
+  occurrence: occurrenceResponseSchema,
+  transaction: z.object({
+    id: z.string(),
+    type: z.enum(["expense", "income"]),
+    amount: z.string(),
+    account_id: z.string(),
+    destination_account_id: z.string().nullable(),
+    category_id: z.string().nullable(),
+    payee: z.string().nullable(),
+    notes: z.string().nullable(),
+    date: z.string(),
+    created_by: z.string(),
+    updated_by: z.string(),
+    is_deleted: z.boolean(),
+    deleted_at: z.string().nullable(),
+    created_at: z.string(),
+    updated_at: z.string(),
+  }),
+});
+
 export type CreateRecurringInput = z.infer<typeof createRecurringRequestSchema>;
 export type UpdateRecurringInput = z.infer<typeof updateRecurringRequestSchema>;
 export type RecurringTemplate = z.infer<typeof recurringTemplateSchema>;
