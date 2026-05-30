@@ -59,6 +59,25 @@ export const transactionIdParamsSchema = z.object({
   id: z.string().min(1),
 });
 
+export const updateTransactionRequestSchema = z.object({
+  type: transactionTypeSchema.optional(),
+  amount: positiveAmountSchema.optional(),
+  account_id: z.string().trim().min(1).optional(),
+  destination_account_id: z.string().trim().min(1).optional(),
+  category_id: z.string().trim().min(1).optional(),
+  payee: z.string().trim().max(255).optional(),
+  notes: z.string().trim().max(1000).optional(),
+  date: z.iso.date().optional(),
+});
+
+export const trashListSchema = z.object({
+  items: z.array(transactionSchema),
+});
+
+export const purgeResponseSchema = z.object({
+  purged_count: z.number(),
+});
+
 export type TransactionType = z.infer<typeof transactionTypeSchema>;
 export type Transaction = z.infer<typeof transactionSchema>;
 export type TransactionDetail = z.infer<typeof transactionDetailSchema>;

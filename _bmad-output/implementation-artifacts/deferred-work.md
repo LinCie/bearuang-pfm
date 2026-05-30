@@ -56,3 +56,10 @@
 ## Resolved in: Story 3.2 — Transfer Between Accounts (2026-05-30)
 
 - `db.batch()` atomicity verified: **IS atomic** in D1/Miniflare — a failing statement rolls back all preceding statements in the batch. Safe to use `db.batch()` for multi-statement operations. Permanent regression test in `tests/integration/batch-atomicity.test.ts`.
+
+## Deferred from: code review of 3-3-transaction-update-soft-delete-trash (2026-05-30)
+
+- `updateTransaction` not wrapped in DB transaction — category `usage_count` can become inconsistent on partial failure; D1 limitation, no real transactions available for Drizzle query builders.
+- `purgeTrash` can't clean rows with NULL `deleted_at` — defensive edge case; no current code path produces this state (softDeleteTransaction always sets deleted_at).
+- `listTrash` has no pagination — unbounded result set; acceptable for MVP single-user low volume.
+- `updateTransactionRequestSchema` allows empty body (all fields optional, no refinement) — triggers a no-op DB write; harmless, low priority.

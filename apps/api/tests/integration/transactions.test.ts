@@ -838,4 +838,493 @@ describe("transaction routes", () => {
       });
     }
   });
+
+  describe("update transaction", () => {
+    it("updates expense fields (amount, payee, notes, date)", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      const createRes = await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: "update-test-1",
+            type: "expense",
+            amount: "50000.00",
+            account_id: account.id,
+            category_id: expenseCategory.id,
+            date: "2026-05-28",
+            payee: "Old Payee",
+            notes: "Old Notes",
+          }),
+        },
+        env,
+      );
+      expect(createRes.status).toBe(201);
+
+      const res = await app.request(
+        "/api/v1/transactions/update-test-1",
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: "75000.00",
+            payee: "New Payee",
+            notes: "New Notes",
+            date: "2026-05-29",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = transactionSchema.parse(await res.json());
+      expect(body.amount).toBe("75000.00");
+      expect(body.payee).toBe("New Payee");
+      expect(body.notes).toBe("New Notes");
+      expect(body.date).toBe("2026-05-29");
+      expect(body.updated_by).toBe(userId);
+    }, 30_000);
+
+    it("updates category_id with usage_count management", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      const newCategory = categoryFactory({
+        name: "Transport",
+        type: "expense",
+        created_by: userId,
+        updated_by: userId,
+      });
+      await db.insert(schema.categories).values(newCategory);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: "update-cat-1",
+            type: "expense",
+            amount: "10000.00",
+            account_id: account.id,
+            category_id: expenseCategory.id,
+            date: "2026-05-28",
+          }),
+        },
+        env,
+      );
+
+      const res = await app.request(
+        "/api/v1/transactions/update-cat-1",
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ category_id: newCategory.id }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = transactionSchema.parse(await res.json());
+      expect(body.category_id).toBe(newCategory.id);
+
+      const oldCat = await db.select().from(schema.categories).where(eq(schema.categories.id, expenseCategory.id)).limit(1);
+      const newCat = await db.select().from(schema.categories).where(eq(schema.categories.id, newCategory.id)).limit(1);
+      expect(oldCat[0]?.usage_count).toBe(0);
+      expect(newCat[0]?.usage_count).toBe(1);
+    }, 30_000);
+
+    it("updates transfer amount, notes, date", async () => {
+      const { token, userId } = await login();
+      const source = accountFactory({ name: "Source", type: "ewallet", initial_balance: "5000000.00", created_by: userId, updated_by: userId });
+      const dest = accountFactory({ name: "Dest", type: "bank", initial_balance: "1000000.00", created_by: userId, updated_by: userId });
+      await db.insert(schema.accounts).values([source, dest]);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: "transfer-upd-1", type: "transfer", amount: "100000.00", account_id: source.id, destination_account_id: dest.id, date: "2026-05-28" }),
+        },
+        env,
+      );
+
+      const res = await app.request(
+        "/api/v1/transactions/transfer-upd-1",
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: "200000.00", notes: "Updated", date: "2026-05-29" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = transactionSchema.parse(await res.json());
+      expect(body.amount).toBe("200000.00");
+      expect(body.notes).toBe("Updated");
+      expect(body.date).toBe("2026-05-29");
+    }, 30_000);
+
+    it("rejects changing account_id on transfer", async () => {
+      const { token, userId } = await login();
+      const source = accountFactory({ name: "S", type: "ewallet", initial_balance: "1000.00", created_by: userId, updated_by: userId });
+      const dest = accountFactory({ name: "D", type: "bank", initial_balance: "1000.00", created_by: userId, updated_by: userId });
+      const other = accountFactory({ name: "O", type: "bank", initial_balance: "1000.00", created_by: userId, updated_by: userId });
+      await db.insert(schema.accounts).values([source, dest, other]);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: "transfer-immut-1", type: "transfer", amount: "500.00", account_id: source.id, destination_account_id: dest.id }),
+        },
+        env,
+      );
+
+      const res = await app.request(
+        "/api/v1/transactions/transfer-immut-1",
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ account_id: other.id }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("TRANSFER_ACCOUNTS_IMMUTABLE");
+    }, 30_000);
+
+    it("rejects changing destination_account_id on transfer", async () => {
+      const { token, userId } = await login();
+      const source = accountFactory({ name: "S", type: "ewallet", initial_balance: "1000.00", created_by: userId, updated_by: userId });
+      const dest = accountFactory({ name: "D", type: "bank", initial_balance: "1000.00", created_by: userId, updated_by: userId });
+      const other = accountFactory({ name: "O", type: "bank", initial_balance: "1000.00", created_by: userId, updated_by: userId });
+      await db.insert(schema.accounts).values([source, dest, other]);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: "transfer-immut-2", type: "transfer", amount: "500.00", account_id: source.id, destination_account_id: dest.id }),
+        },
+        env,
+      );
+
+      const res = await app.request(
+        "/api/v1/transactions/transfer-immut-2",
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ destination_account_id: other.id }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("TRANSFER_ACCOUNTS_IMMUTABLE");
+    }, 30_000);
+
+    it("rejects changing type", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: "type-change-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id }),
+        },
+        env,
+      );
+
+      const res = await app.request(
+        "/api/v1/transactions/type-change-1",
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "income" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("TYPE_CHANGE_NOT_ALLOWED");
+    }, 30_000);
+
+    it("returns NOT_FOUND for non-existent transaction", async () => {
+      const { token } = await login();
+
+      const res = await app.request(
+        "/api/v1/transactions/non-existent-id",
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: "100.00" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("NOT_FOUND");
+    }, 30_000);
+
+    it("returns NOT_FOUND for soft-deleted transaction", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: "del-upd-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id }),
+        },
+        env,
+      );
+
+      await app.request("/api/v1/transactions/del-upd-1", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }, env);
+
+      const res = await app.request(
+        "/api/v1/transactions/del-upd-1",
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: "200.00" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("NOT_FOUND");
+    }, 30_000);
+
+    it("returns CATEGORY_NOT_FOUND for invalid category_id", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: "cat-nf-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id }),
+        },
+        env,
+      );
+
+      const res = await app.request(
+        "/api/v1/transactions/cat-nf-1",
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ category_id: "non-existent-cat" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("CATEGORY_NOT_FOUND");
+    }, 30_000);
+
+    it("returns CATEGORY_TYPE_MISMATCH for wrong category type", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory, incomeCategory } = await seedAccountAndCategories(userId);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: "cat-mm-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id }),
+        },
+        env,
+      );
+
+      const res = await app.request(
+        "/api/v1/transactions/cat-mm-1",
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ category_id: incomeCategory.id }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("CATEGORY_TYPE_MISMATCH");
+    }, 30_000);
+  });
+
+  describe("soft-delete and trash", () => {
+    it("soft-deletes a transaction and returns 204", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: "del-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id }),
+        },
+        env,
+      );
+
+      const res = await app.request("/api/v1/transactions/del-1", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res.status).toBe(204);
+
+      // Verify it's excluded from get-by-id (returns the row but is_deleted=true via detail)
+      const row = await db.select().from(schema.transactions).where(eq(schema.transactions.id, "del-1")).limit(1);
+      expect(row[0]?.is_deleted).toBe(1);
+      expect(row[0]?.deleted_at).not.toBeNull();
+    }, 30_000);
+
+    it("returns NOT_FOUND when deleting already-deleted transaction", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: "del-2", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id }),
+        },
+        env,
+      );
+
+      await app.request("/api/v1/transactions/del-2", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }, env);
+
+      const res = await app.request("/api/v1/transactions/del-2", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res.status).toBe(404);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("NOT_FOUND");
+    }, 30_000);
+
+    it("lists trash with deleted_at", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: "trash-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id }),
+        },
+        env,
+      );
+
+      await app.request("/api/v1/transactions/trash-1", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }, env);
+
+      const res = await app.request("/api/v1/transactions/trash", { headers: { Authorization: `Bearer ${token}` } }, env);
+      expect(res.status).toBe(200);
+
+      const body: { items: { id: string; deleted_at: string | null }[] } = await res.json();
+      expect(body.items.length).toBeGreaterThanOrEqual(1);
+      const item = body.items.find((i) => i.id === "trash-1");
+      expect(item).toBeDefined();
+      expect(item?.deleted_at).not.toBeNull();
+    }, 30_000);
+
+    it("restores a soft-deleted transaction", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      await app.request(
+        "/api/v1/transactions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: "restore-1", type: "expense", amount: "100.00", account_id: account.id, category_id: expenseCategory.id }),
+        },
+        env,
+      );
+
+      await app.request("/api/v1/transactions/restore-1", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }, env);
+
+      const res = await app.request(
+        "/api/v1/transactions/restore-1/restore",
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = transactionSchema.parse(await res.json());
+      expect(body.is_deleted).toBe(false);
+      expect(body.deleted_at).toBeNull();
+    }, 30_000);
+
+    it("returns NOT_FOUND when restoring non-existent transaction", async () => {
+      const { token } = await login();
+
+      const res = await app.request(
+        "/api/v1/transactions/non-existent/restore",
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+      expect(errorResponseSchema.parse(await res.json()).error.code).toBe("NOT_FOUND");
+    }, 30_000);
+
+    it("purges trash older than 30 days", async () => {
+      const { token, userId } = await login();
+      const { account, expenseCategory } = await seedAccountAndCategories(userId);
+
+      // Insert a transaction directly with old deleted_at
+      const oldDate = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+      const now = new Date().toISOString();
+      await db.insert(schema.transactions).values({
+        id: "purge-old-1",
+        type: "expense",
+        amount: "100.00",
+        account_id: account.id,
+        category_id: expenseCategory.id,
+        date: "2026-04-01",
+        created_by: userId,
+        updated_by: userId,
+        is_deleted: 1,
+        deleted_at: oldDate,
+        created_at: now,
+        updated_at: now,
+      });
+
+      const res = await app.request(
+        "/api/v1/transactions/trash/purge",
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { purged_count: number } = await res.json();
+      expect(body.purged_count).toBeGreaterThanOrEqual(1);
+
+      // Verify it's gone
+      const row = await db.select().from(schema.transactions).where(eq(schema.transactions.id, "purge-old-1")).limit(1);
+      expect(row).toHaveLength(0);
+    }, 30_000);
+
+    it("purge returns 0 when nothing to purge", async () => {
+      const { token } = await login();
+
+      const res = await app.request(
+        "/api/v1/transactions/trash/purge",
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body: { purged_count: number } = await res.json();
+      expect(body.purged_count).toBe(0);
+    }, 30_000);
+  });
 });

@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { HTTPException } from "hono/http-exception";
 import { accounts, categories, transactions } from "../db/schema";
@@ -234,4 +234,197 @@ export const getAccountDeltas = async (
   }
 
   return deltas;
+};
+
+interface UpdateTransactionInput {
+  type?: string;
+  amount?: string;
+  account_id?: string;
+  destination_account_id?: string;
+  category_id?: string;
+  payee?: string;
+  notes?: string;
+  date?: string;
+}
+
+export const updateTransaction = async (
+  db: DrizzleD1Database,
+  id: string,
+  input: UpdateTransactionInput,
+  userId: string,
+): Promise<Transaction> => {
+  const row = await db
+    .select()
+    .from(transactions)
+    .where(and(eq(transactions.id, id), eq(transactions.is_deleted, 0)))
+    .limit(1);
+  const existing = row[0];
+
+  if (!existing) {
+    throw new ApiError(404, "NOT_FOUND", "Transaction not found");
+  }
+
+  if (input.type && input.type !== existing.type) {
+    throw new ApiError(400, "TYPE_CHANGE_NOT_ALLOWED", "Cannot change transaction type. Delete and recreate instead.");
+  }
+
+  const now = new Date().toISOString();
+  const updateObj: Record<string, unknown> = { updated_by: userId, updated_at: now };
+
+  if (existing.type === "transfer") {
+    if (input.account_id && input.account_id !== existing.account_id) {
+      throw new ApiError(400, "TRANSFER_ACCOUNTS_IMMUTABLE", "Cannot change accounts on a transfer. Delete and recreate instead.");
+    }
+    if (input.destination_account_id && input.destination_account_id !== existing.destination_account_id) {
+      throw new ApiError(400, "TRANSFER_ACCOUNTS_IMMUTABLE", "Cannot change accounts on a transfer. Delete and recreate instead.");
+    }
+    if (input.amount !== undefined) updateObj.amount = input.amount;
+    if (input.notes !== undefined) updateObj.notes = input.notes;
+    if (input.date !== undefined) updateObj.date = input.date;
+  } else {
+    if (input.category_id && input.category_id !== existing.category_id) {
+      const categoryRows = await db
+        .select({ id: categories.id, type: categories.type })
+        .from(categories)
+        .where(eq(categories.id, input.category_id))
+        .limit(1);
+      const category = categoryRows[0];
+
+      if (!category) {
+        throw new ApiError(404, "CATEGORY_NOT_FOUND", "Category not found");
+      }
+      if (category.type !== existing.type) {
+        throw new ApiError(400, "CATEGORY_TYPE_MISMATCH", `Category type "${category.type}" does not match transaction type "${existing.type}"`);
+      }
+
+      if (existing.category_id) {
+        await db.update(categories).set({ usage_count: sql`MAX(${categories.usage_count} - 1, 0)` }).where(eq(categories.id, existing.category_id));
+      }
+      await db.update(categories).set({ usage_count: sql`${categories.usage_count} + 1` }).where(eq(categories.id, input.category_id));
+    }
+
+    if (input.amount !== undefined) updateObj.amount = input.amount;
+    if (input.category_id !== undefined) updateObj.category_id = input.category_id;
+    if (input.payee !== undefined) updateObj.payee = input.payee;
+    if (input.notes !== undefined) updateObj.notes = input.notes;
+    if (input.date !== undefined) updateObj.date = input.date;
+  }
+
+  await db.update(transactions).set(updateObj).where(eq(transactions.id, id));
+
+  const updated = await findTransactionRow(db, id);
+  if (!updated) {
+    throw new HTTPException(500, { message: "Failed to load updated transaction" });
+  }
+
+  return toTransaction(updated);
+};
+
+export const softDeleteTransaction = async (
+  db: DrizzleD1Database,
+  id: string,
+  userId: string,
+): Promise<void> => {
+  const row = await db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(and(eq(transactions.id, id), eq(transactions.is_deleted, 0)))
+    .limit(1);
+
+  if (!row[0]) {
+    throw new ApiError(404, "NOT_FOUND", "Transaction not found");
+  }
+
+  const now = new Date().toISOString();
+  await db.update(transactions).set({
+    is_deleted: 1,
+    deleted_at: now,
+    updated_by: userId,
+    updated_at: now,
+  }).where(eq(transactions.id, id));
+};
+
+export const listTrash = async (
+  db: DrizzleD1Database,
+): Promise<Transaction[]> => {
+  const rows = await db
+    .select()
+    .from(transactions)
+    .where(eq(transactions.is_deleted, 1))
+    .orderBy(sql`${transactions.deleted_at} DESC`);
+
+  return rows.map(toTransaction);
+};
+
+export const restoreTransaction = async (
+  db: DrizzleD1Database,
+  id: string,
+  userId: string,
+): Promise<Transaction> => {
+  const row = await db
+    .select()
+    .from(transactions)
+    .where(and(eq(transactions.id, id), eq(transactions.is_deleted, 1)))
+    .limit(1);
+
+  if (!row[0]) {
+    throw new ApiError(404, "NOT_FOUND", "Transaction not found");
+  }
+
+  const acct = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.id, row[0].account_id), eq(accounts.is_active, 1)))
+    .limit(1);
+
+  if (!acct[0]) {
+    throw new ApiError(409, "ACCOUNT_INACTIVE", "Cannot restore: source account is inactive");
+  }
+
+  if (row[0].destination_account_id) {
+    const destAcct = await db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(and(eq(accounts.id, row[0].destination_account_id), eq(accounts.is_active, 1)))
+      .limit(1);
+
+    if (!destAcct[0]) {
+      throw new ApiError(409, "ACCOUNT_INACTIVE", "Cannot restore: destination account is inactive");
+    }
+  }
+
+  const now = new Date().toISOString();
+  await db.update(transactions).set({
+    is_deleted: 0,
+    deleted_at: null,
+    updated_at: now,
+    updated_by: userId,
+  }).where(eq(transactions.id, id));
+
+  const restored = await findTransactionRow(db, id);
+  if (!restored) {
+    throw new HTTPException(500, { message: "Failed to load restored transaction" });
+  }
+
+  return toTransaction(restored);
+};
+
+export const purgeTrash = async (
+  db: DrizzleD1Database,
+): Promise<number> => {
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const countResult = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(transactions)
+    .where(and(eq(transactions.is_deleted, 1), lt(transactions.deleted_at, cutoff)));
+  const purgedCount = countResult[0]?.count ?? 0;
+
+  if (purgedCount > 0) {
+    await db.delete(transactions).where(
+      and(eq(transactions.is_deleted, 1), lt(transactions.deleted_at, cutoff)),
+    );
+  }
+
+  return purgedCount;
 };
