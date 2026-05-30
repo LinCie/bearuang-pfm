@@ -60,11 +60,11 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Transactions & Soft-Delete
-  epic-3: in-progress
+  epic-3: done
   3-1-expense-income-transactions: done
   3-2-transfer-between-accounts: done
   3-3-transaction-update-soft-delete-trash: done
-  3-4-transaction-listing-pagination-search: review
+  3-4-transaction-listing-pagination-search: done
   epic-3-retrospective: optional
 
   # Epic 4: Recurring Transactions & Receipts
