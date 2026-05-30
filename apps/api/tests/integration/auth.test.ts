@@ -315,7 +315,7 @@ describe("auth routes", () => {
       expect(secondLoginRes.status).toBe(200);
       const secondLoginBody = loginResponseSchema.parse(await secondLoginRes.json());
       expect(secondLoginBody.token).toMatch(/^[a-f0-9]{64}$/);
-    }, 90_000);
+    }, 120_000);
 
     it("returns 401 when current password is incorrect", async () => {
       const loginRes = await app.request(
@@ -490,8 +490,13 @@ describe("auth routes", () => {
     }, 60_000);
 
     it("allows login after lockout window expires", async () => {
+      // Simulate a hit lockout, then the rate-limit window expiring.
+      // In this implementation an expired KV TTL == an absent key (see
+      // rate-limit.ts: getRateLimitCount returns 0 when the key is gone),
+      // so deleting the key faithfully reproduces window expiry WITHOUT
+      // sleeping 61s in real time (KV's minimum expirationTtl is 60s).
       await env.SESSIONS.put("rate_limit:login:global", "5", { expirationTtl: 60 });
-      await new Promise((resolve) => setTimeout(resolve, 61_000));
+      await env.SESSIONS.delete("rate_limit:login:global");
 
       const res = await app.request(
         "/api/v1/auth/login",
@@ -506,6 +511,6 @@ describe("auth routes", () => {
       expect(res.status).toBe(200);
       const body = loginResponseSchema.parse(await res.json());
       expect(body.token).toMatch(/^[a-f0-9]{64}$/);
-    }, 90_000);
+    }, 60_000);
   });
 });

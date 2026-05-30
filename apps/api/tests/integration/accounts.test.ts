@@ -10,7 +10,7 @@ import {
   accountSchema,
 } from "../../src/schemas/account.schema";
 import { errorResponseSchema } from "../../src/schemas/common.schema";
-import { accountFactory } from "../fixtures/factories";
+import { accountFactory, categoryFactory, transactionFactory } from "../fixtures/factories";
 import { applyMigrations } from "../setup";
 
 describe("account routes", () => {
@@ -27,7 +27,9 @@ describe("account routes", () => {
   });
 
   beforeEach(async () => {
+    await env.DB.prepare("DELETE FROM transactions").run();
     await env.DB.prepare("DELETE FROM accounts").run();
+    await env.DB.prepare("DELETE FROM categories").run();
     await env.DB.prepare("DELETE FROM users").run();
     await env.DB.prepare("DELETE FROM settings").run();
     const kvList = await env.SESSIONS.list();
@@ -321,6 +323,132 @@ describe("account routes", () => {
       total_assets: "5001000.00",
       total_liabilities: "2000000.00",
       net_worth: "3001000.00",
+    });
+  }, 30_000);
+
+  it("derives account balances from income and expense transactions", async () => {
+    const { token, userId } = await login();
+    const account = accountFactory({
+      name: "Main Wallet",
+      type: "bank",
+      initial_balance: "1000.00",
+      created_by: userId,
+      updated_by: userId,
+    });
+    const incomeCategory = categoryFactory({
+      name: "Salary",
+      type: "income",
+      created_by: userId,
+      updated_by: userId,
+    });
+    const expenseCategory = categoryFactory({
+      name: "Food",
+      type: "expense",
+      created_by: userId,
+      updated_by: userId,
+    });
+
+    await db.insert(schema.accounts).values(account);
+    await db.insert(schema.categories).values([incomeCategory, expenseCategory]);
+    await db.insert(schema.transactions).values([
+      transactionFactory({
+        account_id: account.id,
+        category_id: incomeCategory.id,
+        type: "income",
+        amount: "500.00",
+        created_by: userId,
+        updated_by: userId,
+      }),
+      transactionFactory({
+        account_id: account.id,
+        category_id: expenseCategory.id,
+        type: "expense",
+        amount: "200.00",
+        created_by: userId,
+        updated_by: userId,
+      }),
+    ]);
+
+    const res = await app.request(
+      "/api/v1/accounts",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+
+    const body = accountListResponseSchema.parse(await res.json());
+    expect(body.items).toContainEqual(
+      expect.objectContaining({
+        id: account.id,
+        current_balance: "1300.00",
+      }),
+    );
+    expect(body.summary).toEqual({
+      total_assets: "1300.00",
+      total_liabilities: "0",
+      net_worth: "1300.00",
+    });
+  }, 30_000);
+
+  it("excludes soft-deleted transactions from derived balances", async () => {
+    const { token, userId } = await login();
+    const account = accountFactory({
+      name: "Travel Wallet",
+      type: "bank",
+      initial_balance: "1000.00",
+      created_by: userId,
+      updated_by: userId,
+    });
+    const category = categoryFactory({
+      name: "Salary",
+      type: "income",
+      created_by: userId,
+      updated_by: userId,
+    });
+
+    await db.insert(schema.accounts).values(account);
+    await db.insert(schema.categories).values(category);
+    await db.insert(schema.transactions).values([
+      transactionFactory({
+        account_id: account.id,
+        category_id: category.id,
+        type: "income",
+        amount: "500.00",
+        is_deleted: 1,
+        deleted_at: "2026-05-28T10:00:00.000Z",
+        created_by: userId,
+        updated_by: userId,
+      }),
+    ]);
+
+    const res = await app.request(
+      "/api/v1/accounts",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+
+    const body = accountListResponseSchema.parse(await res.json());
+    expect(body.items).toContainEqual(
+      expect.objectContaining({
+        id: account.id,
+        current_balance: "1000.00",
+      }),
+    );
+    expect(body.summary).toEqual({
+      total_assets: "1000.00",
+      total_liabilities: "0",
+      net_worth: "1000.00",
     });
   }, 30_000);
 

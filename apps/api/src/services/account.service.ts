@@ -3,6 +3,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { HTTPException } from "hono/http-exception";
 import { accounts } from "../db/schema";
 import { add, subtract, sum } from "../lib/decimal";
+import { getAccountDeltas } from "./transaction.service";
 import type {
   Account,
   AccountListResponse,
@@ -49,8 +50,7 @@ const getTransactionDeltas = async (
     return new Map();
   }
 
-  // Epic 3 (Story 3.1+) implements per-account transaction summation here.
-  return new Map();
+  return getAccountDeltas(db);
 };
 
 export const createAccount = async (

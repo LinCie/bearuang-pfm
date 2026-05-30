@@ -5,6 +5,7 @@ type UserInsert = InferInsertModel<typeof schema.users>;
 type SettingsInsert = InferInsertModel<typeof schema.settings>;
 type CategoryInsert = InferInsertModel<typeof schema.categories>;
 type AccountInsert = InferInsertModel<typeof schema.accounts>;
+type TransactionInsert = InferInsertModel<typeof schema.transactions>;
 
 export const userFactory = (overrides?: Partial<UserInsert>): UserInsert => ({
   id: crypto.randomUUID(),
@@ -57,6 +58,31 @@ export const accountFactory = (
     is_active: 1,
     created_by: "00000000-0000-0000-0000-000000000000",
     updated_by: "00000000-0000-0000-0000-000000000000",
+    created_at: now,
+    updated_at: now,
+    ...overrides,
+  };
+};
+
+export const transactionFactory = (
+  overrides?: Partial<TransactionInsert>,
+): TransactionInsert => {
+  const now = new Date().toISOString();
+
+  return {
+    id: crypto.randomUUID(),
+    type: "expense",
+    amount: "0",
+    account_id: "00000000-0000-0000-0000-000000000001",
+    destination_account_id: null,
+    category_id: "00000000-0000-0000-0000-000000000002",
+    payee: null,
+    notes: null,
+    date: new Date().toISOString().slice(0, 10),
+    created_by: "00000000-0000-0000-0000-000000000000",
+    updated_by: "00000000-0000-0000-0000-000000000000",
+    is_deleted: 0,
+    deleted_at: null,
     created_at: now,
     updated_at: now,
     ...overrides,

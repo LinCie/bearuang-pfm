@@ -7,6 +7,7 @@ import { categoriesRouter } from "./routes/categories";
 import { healthRouter } from "./routes/health";
 import { setupRouter } from "./routes/setup";
 import { settingsRouter } from "./routes/settings";
+import { transactionsRouter } from "./routes/transactions";
 import { errorResponseSchema } from "./schemas/common.schema";
 
 const app = new OpenAPIHono<{ Bindings: Env; Variables: { userId: string } }>({
@@ -49,5 +50,6 @@ app.route("/", authRouter);
 app.route("/", settingsRouter);
 app.route("/", categoriesRouter);
 app.route("/", accountsRouter);
+app.route("/", transactionsRouter);
 
 export default app;

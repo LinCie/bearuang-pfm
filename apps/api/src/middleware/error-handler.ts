@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { ApiError } from "../lib/api-error";
 import { errorResponseSchema } from "../schemas/common.schema";
 
 const deriveCode = (status: number): string => {
@@ -30,16 +31,17 @@ const deriveCode = (status: number): string => {
 
 export const errorHandler = (err: Error, c: Context): Response => {
   if (err instanceof HTTPException) {
+    const code = err instanceof ApiError ? err.code : deriveCode(err.status);
     const parsed = errorResponseSchema.safeParse({
       error: {
-        code: deriveCode(err.status),
+        code,
         message: err.message,
       },
     });
 
     const errorBody = parsed.success
       ? parsed.data
-      : { error: { code: deriveCode(err.status), message: err.message } };
+      : { error: { code, message: err.message } };
 
     return c.json(errorBody, err.status);
   }

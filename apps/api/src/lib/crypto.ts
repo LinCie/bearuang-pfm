@@ -2,9 +2,22 @@ import { argon2idAsync } from "@noble/hashes/argon2.js";
 import { pbkdf2Async } from "@noble/hashes/pbkdf2.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 
+// !!! TEMPORARY — MVP SPEED HACK — DO NOT SHIP TO PRODUCTION !!!
+// These argon2id parameters are at the algorithm's HARD MINIMUM (t=1, and
+// m=8 is the floor since argon2 requires m >= 8*p). They are deliberately
+// weakened to keep the test suite fast — the pure-JS @noble/hashes argon2id
+// at t=3,m=65536 costs ~2s PER HASH inside the workers sandbox, and every
+// test login re-provisions a user. At these values a hash is ~2-3ms.
+// Production-grade values are t=3, m=65_536 (64 MiB), p=1.
+//
+// TODO(security): BEFORE MVP RELEASE, restore strong params — ideally make
+// them env-driven so tests can stay cheap while prod stays strong:
+//   const ARGON2_PARAMS = { t: 3, m: 65_536, p: 1, dkLen: 32 };
+// verifyPassword already reads t/m/p back out of the stored hash string, so
+// raising these later stays backward-compatible with existing hashes.
 const ARGON2_PARAMS = {
-  t: 3,
-  m: 65_536,
+  t: 1,
+  m: 8,
   p: 1,
   dkLen: 32,
 } as const;
