@@ -83,7 +83,7 @@ const listAccountsRoute = createRoute({
 
 const getAccountRoute = createRoute({
   method: "get",
-  path: "/api/v1/accounts/:id",
+  path: "/api/v1/accounts/{id}",
   request: {
     params: accountIdParamsSchema,
   },
@@ -117,7 +117,7 @@ const getAccountRoute = createRoute({
 
 const updateAccountRoute = createRoute({
   method: "put",
-  path: "/api/v1/accounts/:id",
+  path: "/api/v1/accounts/{id}",
   request: {
     params: accountIdParamsSchema,
     body: {
@@ -167,7 +167,7 @@ const updateAccountRoute = createRoute({
 
 const deleteAccountRoute = createRoute({
   method: "delete",
-  path: "/api/v1/accounts/:id",
+  path: "/api/v1/accounts/{id}",
   request: {
     params: accountIdParamsSchema,
   },

@@ -118,7 +118,7 @@ const seedCategoriesRoute = createRoute({
 
 const updateCategoryRoute = createRoute({
   method: "put",
-  path: "/api/v1/categories/:id",
+  path: "/api/v1/categories/{id}",
   request: {
     params: categoryIdParamsSchema,
     body: {
@@ -168,7 +168,7 @@ const updateCategoryRoute = createRoute({
 
 const deleteCategoryRoute = createRoute({
   method: "delete",
-  path: "/api/v1/categories/:id",
+  path: "/api/v1/categories/{id}",
   request: {
     params: categoryIdParamsSchema,
   },

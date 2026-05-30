@@ -74,7 +74,25 @@ const updateSettingsRoute = createRoute({
   },
 });
 
-export const settingsRouter = new OpenAPIHono<{ Bindings: Env; Variables: { userId: string } }>();
+export const settingsRouter = new OpenAPIHono<{ Bindings: Env; Variables: { userId: string } }>({
+  defaultHook: (result, c) => {
+    if (!result.success) {
+      const parsed = errorResponseSchema.safeParse({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Validation failed",
+          details: result.error.issues,
+        },
+      });
+
+      const errorBody = parsed.success
+        ? parsed.data
+        : { error: { code: "VALIDATION_ERROR", message: "Validation failed" } };
+
+      return c.json(errorBody, 400);
+    }
+  },
+});
 
 settingsRouter.use("/api/v1/settings", authMiddleware);
 

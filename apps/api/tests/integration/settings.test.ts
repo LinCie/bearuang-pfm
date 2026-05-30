@@ -171,8 +171,9 @@ describe("settings routes", () => {
     );
 
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body).toHaveProperty("error");
+    const body = errorResponseSchema.parse(await res.json());
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.message).toBe("Validation failed");
     expect(JSON.stringify(body)).toContain("key");
   }, 30_000);
 

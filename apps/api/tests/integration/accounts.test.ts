@@ -158,6 +158,34 @@ describe("account routes", () => {
     expect(body.error.message).toBe("Validation failed");
   }, 30_000);
 
+  it("returns 400 when initial_balance exceeds max length", async () => {
+    const { token } = await login();
+
+    const res = await app.request(
+      "/api/v1/accounts",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Oversized Balance",
+          type: "bank",
+          currency: "IDR",
+          initial_balance: "1".repeat(31),
+        }),
+      },
+      env,
+    );
+
+    expect(res.status).toBe(400);
+
+    const body = errorResponseSchema.parse(await res.json());
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.message).toBe("Validation failed");
+  }, 30_000);
+
   it("lists only active accounts ordered by created_at then name", async () => {
     const { token, userId } = await login();
     const sharedTime = "2026-01-02T00:00:00.000Z";

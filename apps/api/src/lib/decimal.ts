@@ -26,6 +26,12 @@ const parse = (value: string): ParsedDecimal => {
 };
 
 const toScaledBigInt = (parsed: ParsedDecimal, targetScale: number): bigint => {
+  if (targetScale < parsed.scale) {
+    throw new RangeError(
+      `targetScale (${String(targetScale)}) must be >= the value's own scale (${String(parsed.scale)})`,
+    );
+  }
+
   const padded = parsed.digits + "0".repeat(targetScale - parsed.scale);
   const magnitude = BigInt(padded);
 

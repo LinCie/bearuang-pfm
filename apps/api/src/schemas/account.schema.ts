@@ -12,6 +12,7 @@ export const accountTypeSchema = z.enum([
 const decimalStringSchema = z
   .string()
   .trim()
+  .max(30, "Must be at most 30 characters")
   .regex(/^-?\d+(\.\d+)?$/, "Must be a valid decimal string");
 
 export const accountSchema = z.object({
