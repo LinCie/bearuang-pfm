@@ -8,6 +8,7 @@ import { categoriesRouter } from "./routes/categories";
 import { healthRouter } from "./routes/health";
 import { setupRouter } from "./routes/setup";
 import { settingsRouter } from "./routes/settings";
+import { recurringRouter } from "./routes/recurring";
 import { transactionsRouter } from "./routes/transactions";
 import { errorResponseSchema } from "./schemas/common.schema";
 
@@ -54,6 +55,7 @@ app.route("/", settingsRouter);
 app.route("/", categoriesRouter);
 app.route("/", accountsRouter);
 app.route("/", transactionsRouter);
+app.route("/", recurringRouter);
 
 // Bearer session-token auth scheme, referenced by protected routes via `security: [{ Bearer: [] }]`.
 app.openAPIRegistry.registerComponent("securitySchemes", "Bearer", {

@@ -1,5 +1,5 @@
 # generated: 2026-05-28
-# last_updated: 2026-05-30 (story-3.4-review)
+# last_updated: 2026-05-30 (story-4.1-implemented)
 # project: bearuang
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28
-last_updated: 2026-05-30 (story-3.4-review)
+last_updated: 2026-05-30 (story-4.1-implemented)
 project: bearuang
 project_key: NOKEY
 tracking_system: file-system
@@ -68,8 +68,8 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: Recurring Transactions & Receipts
-  epic-4: backlog
-  4-1-recurring-transaction-templates: backlog
+  epic-4: in-progress
+  4-1-recurring-transaction-templates: review
   4-2-occurrence-generation-confirm-skip: backlog
   4-3-receipt-upload-management: backlog
   epic-4-retrospective: optional

@@ -8,3 +8,4 @@ export { settings } from "./settings";
 export { categories } from "./categories";
 export { accounts } from "./accounts";
 export { transactions } from "./transactions";
+export { recurringTemplates, recurringOccurrences } from "./recurring";

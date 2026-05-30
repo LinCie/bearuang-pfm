@@ -29,6 +29,13 @@
       "when": 1780118832973,
       "tag": "0003_milky_ben_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1780151517191,
+      "tag": "0004_hot_guardian",
+      "breakpoints": true
     }
   ]
 }
